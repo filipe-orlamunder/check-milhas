@@ -1,1 +1,1 @@
-# Check Milhas - Gestão Inteligente de Emissões de Passagens Aéreas com Milhas
+# Check Milhas
