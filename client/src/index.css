@@ -1,0 +1,9 @@
+/*
+ * @tailwind base: Inclui os estilos base e normaliza a aparência dos elementos HTML.
+ * @tailwind components: Adiciona classes de componentes reutilizáveis, como botões e cards.
+ * @tailwind utilities: Insere as classes utilitárias para construir e estilizar o layout.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
