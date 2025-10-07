@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // normalmente "file:./dev.db"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  profiles     Profile[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Profile {
+  id          String        @id @default(cuid())
+  user        User          @relation(fields: [userId], references: [id])
+  userId      String
+  name        String
+  cpf         String
+  beneficiaries Beneficiary[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([userId, cpf]) // evita CPF repetido dentro da mesma conta (user)
+}
+
+enum Program {
+  LATAM
+  SMILES
+  AZUL
+}
+
+enum Status {
+  UTILIZADO
+  LIBERADO
+  PENDENTE
+}
+
+model Beneficiary {
+  id            String   @id @default(cuid())
+  profile       Profile  @relation(fields: [profileId], references: [id])
+  profileId     String
+  program       Program
+  name          String
+  cpf           String
+  issueDate     DateTime
+  status        Status
+
+  // Campos para o fluxo do Azul
+  previousName  String?
+  previousCpf   String?
+  previousDate  DateTime?
+  changeDate    DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([profileId, program, cpf]) // evita CPF duplicado dentro do mesmo profile+program
+}
