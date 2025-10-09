@@ -3,7 +3,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { computeStatus } from "../utils/statusCalculator";
 import { isCpfValid } from "../utils/validators";
-import { authMiddleware } from "../middleware/authMiddleware";
+import { authMiddleware, AuthRequest } from "../middleware/authMiddleware"; // 1. Importe a interface AuthRequest
 import { Program, Status } from "@prisma/client";
 
 const router = Router();
@@ -21,16 +21,20 @@ async function ensureProfileBelongsToUser(profileId: string, userId: string) {
 /**
  * GET /profiles/:profileId/beneficiaries?program=LATAM
  */
-router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req, res) => {
+router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => { // 2. Use a interface
   try {
     const { profileId } = req.params;
     const programQ = (req.query.program as string | undefined)?.toUpperCase();
-    const userId = (req as any).userId;
+    const userId = req.user?.id; // 3. Corrija o acesso ao ID do usuário
+
+    if (!userId) { // 4. Adicione uma verificação de segurança
+      return res.status(401).json({ error: "Usuário não autenticado." });
+    }
 
     await ensureProfileBelongsToUser(profileId, userId);
 
     const where: any = { profileId };
-    if (programQ) where.program = programQ;
+    if (programQ) where.program = programQ as Program;
 
     const list = await prisma.beneficiary.findMany({ where, orderBy: { createdAt: "desc" } });
     return res.json(list);
@@ -44,11 +48,15 @@ router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req, res
 /**
  * POST /profiles/:profileId/beneficiaries
  */
-router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req, res) => {
+router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { profileId } = req.params;
     const { program, name, cpf, issueDate } = req.body;
-    const userId = (req as any).userId;
+    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado." });
+    }
 
     await ensureProfileBelongsToUser(profileId, userId);
 
@@ -62,12 +70,11 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req, re
 
     if (!isCpfValid(cpf)) return res.status(400).json({ error: "CPF inválido (11 dígitos)" });
 
-    // verifica duplicidade dentro do mesmo profile+program
     const exists = await prisma.beneficiary.findFirst({ where: { profileId, program: prog, cpf } });
     if (exists) return res.status(400).json({ error: "CPF já cadastrado nesse programa para este perfil" });
 
     const issue = new Date(issueDate);
-    const status = computeStatus(prog, issue, null, new Date()); // status com base na data atual ao criar
+    const status = computeStatus(prog, issue, null, new Date());
 
     const created = await prisma.beneficiary.create({
       data: {
@@ -90,19 +97,20 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req, re
 
 /**
  * PUT /beneficiaries/:id
- * - Para LATAM/SMILES: atualiza direto (verifica duplicidade de CPF)
- * - Para AZUL: se houver alteração, inicia fluxo "PENDENTE" (previous*, changeDate, status PENDENTE)
  */
-router.put("/beneficiaries/:id", authMiddleware, async (req, res) => {
+router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { name, cpf, issueDate } = req.body;
-    const userId = (req as any).userId;
+    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado." });
+    }
 
     const existing = await prisma.beneficiary.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: "Beneficiário não encontrado" });
 
-    // verificar ownership via profile
     const profile = await prisma.profile.findUnique({ where: { id: existing.profileId } });
     if (!profile) return res.status(404).json({ error: "Perfil não encontrado" });
     if (profile.userId !== userId) return res.status(403).json({ error: "Acesso negado" });
@@ -110,10 +118,9 @@ router.put("/beneficiaries/:id", authMiddleware, async (req, res) => {
     if (existing.program === "AZUL") {
       const changed = (name && name !== existing.name) || (cpf && cpf !== existing.cpf) || (issueDate && new Date(issueDate).getTime() !== existing.issueDate.getTime());
       if (!changed) return res.status(400).json({ error: "Nenhuma alteração detectada" });
-
       if (cpf && !isCpfValid(cpf)) return res.status(400).json({ error: "CPF inválido" });
-      const dup = cpf ? await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: existing.program, cpf } }) : null;
-      if (dup && dup.id !== existing.id) return res.status(400).json({ error: "CPF já cadastrado nesse programa" });
+      const dup = cpf ? await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: existing.program, cpf, NOT: { id } } }) : null;
+      if (dup) return res.status(400).json({ error: "CPF já cadastrado nesse programa" });
 
       const updated = await prisma.beneficiary.update({
         where: { id },
@@ -128,7 +135,6 @@ router.put("/beneficiaries/:id", authMiddleware, async (req, res) => {
           status: Status.PENDENTE
         }
       });
-
       return res.json(updated);
     }
 
@@ -162,10 +168,15 @@ router.put("/beneficiaries/:id", authMiddleware, async (req, res) => {
 /**
  * DELETE /beneficiaries/:id
  */
-router.delete("/beneficiaries/:id", authMiddleware, async (req, res) => {
+router.delete("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).userId;
+    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado." });
+    }
+    
     const existing = await prisma.beneficiary.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: "Não encontrado" });
 
@@ -184,11 +195,15 @@ router.delete("/beneficiaries/:id", authMiddleware, async (req, res) => {
 /**
  * DELETE /profiles/:profileId/beneficiaries?program=LATAM (excluir todos do programa)
  */
-router.delete("/profiles/:profileId/beneficiaries", authMiddleware, async (req, res) => {
+router.delete("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { profileId } = req.params;
     const programQ = (req.query.program as string | undefined)?.toUpperCase();
-    const userId = (req as any).userId;
+    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado." });
+    }
 
     await ensureProfileBelongsToUser(profileId, userId);
 
@@ -206,10 +221,14 @@ router.delete("/profiles/:profileId/beneficiaries", authMiddleware, async (req, 
 /**
  * POST /beneficiaries/:id/cancel-change  (AZUL)
  */
-router.post("/beneficiaries/:id/cancel-change", authMiddleware, async (req, res) => {
+router.post("/beneficiaries/:id/cancel-change", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).userId;
+    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+
+    if (!userId) {
+      return res.status(401).json({ error: "Usuário não autenticado." });
+    }
 
     const existing = await prisma.beneficiary.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: "Não encontrado" });

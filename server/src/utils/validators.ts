@@ -9,7 +9,6 @@ export function isNameValid(name: string): boolean {
 
 export function isCpfValid(cpf: string): boolean {
   if (!cpf) return false;
-  // apenas dígitos (remova pontuação antes caso venha com máscara)
   return /^\d{11}$/.test(cpf);
 }
 

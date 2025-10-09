@@ -1,67 +1,129 @@
 // src/routes/profiles.ts
+
 import { Router } from "express";
+import { z, ZodError } from "zod";
 import { prisma } from "../prisma";
-import { isNameValid, isCpfValid } from "../utils/validators";
-import { authMiddleware } from "../middleware/authMiddleware";
+import { authMiddleware, AuthRequest } from "../middleware/authMiddleware"; // Importe a interface
+import { Prisma } from "@prisma/client";
 
-const router = Router();
+const profilesRouter = Router();
 
-// GET /profiles - lista os perfis do usuário logado
-router.get("/profiles", authMiddleware, async (req, res) => {
-  const userId = (req as any).userId;
-  const profiles = await prisma.profile.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" }
-  });
-  return res.json(profiles);
+// Zod schema for profile creation
+const createProfileSchema = z.object({
+  name: z.string().min(1, "O nome do perfil é obrigatório."),
+  cpf: z.string().length(11, "O CPF deve ter 11 dígitos."),
 });
 
-// POST /profiles - cria perfil (nome + cpf)
-router.post("/profiles", authMiddleware, async (req, res) => {
+// GET /profiles - Listar perfis do usuário autenticado
+profilesRouter.get("/profiles", authMiddleware, async (req: AuthRequest, res) => { // Use a interface AuthRequest
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Usuário não autenticado." });
+  }
+
   try {
-    const userId = (req as any).userId;
-    const { name, cpf } = req.body;
+    const profiles = await prisma.profile.findMany({
+      where: { userId },
+    });
+    res.json(profiles);
+  } catch (error) {
+    console.error("Erro ao listar perfis:", error);
+    res.status(500).json({ error: "Erro ao listar perfis" });
+  }
+});
 
-    if (!isNameValid(name)) return res.status(400).json({ error: "Nome inválido (4-60 caracteres, apenas letras e espaços)." });
-    if (!isCpfValid(cpf)) return res.status(400).json({ error: "CPF inválido (11 dígitos numéricos)." });
+// POST /profiles - Criar novo perfil
+profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) => { // Use a interface AuthRequest
+  const userId = req.user?.id;
 
-    const count = await prisma.profile.count({ where: { userId } });
-    if (count >= 10) return res.status(400).json({ error: "Limite de 10 perfis por conta atingido." });
+  if (!userId) {
+    return res.status(401).json({ error: "Usuário não autenticado." });
+  }
 
-    // evitar cpf duplicado dentro do mesmo user
-    const exists = await prisma.profile.findFirst({ where: { userId, cpf } });
-    if (exists) return res.status(400).json({ error: "CPF já cadastrado em outro perfil desta conta." });
-
-    const created = await prisma.profile.create({
-      data: { userId, name, cpf }
+  try {
+    // 0. 🔹 Verifica se o usuário do token realmente existe
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
     });
 
-    return res.status(201).json(created);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Erro interno" });
+    if (!user) {
+      return res.status(401).json({ error: "Usuário do token não encontrado. Por favor, autentique-se novamente." });
+    }
+
+    // 1. Valida o corpo da requisição
+    const { name, cpf } = createProfileSchema.parse(req.body);
+
+    // 2. Verifica se o CPF já está cadastrado para este usuário
+    const existingProfile = await prisma.profile.findUnique({
+      where: {
+        userId_cpf: {
+          userId,
+          cpf,
+        },
+      },
+    });
+
+    if (existingProfile) {
+      return res.status(400).json({ error: "CPF já cadastrado para este usuário." });
+    }
+
+    // 3. Cria o novo perfil
+    const created = await prisma.profile.create({
+      data: {
+        name,
+        cpf,
+        userId,
+      },
+    });
+
+    res.status(201).json(created);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      // ✅ CORREÇÃO APLICADA AQUI
+      return res.status(400).json({ errors: error.flatten().fieldErrors });
+    }
+    
+    console.error("Erro ao criar perfil:", error);
+
+    // Tratamento para o erro de chave estrangeira que você teve originalmente
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      return res.status(401).json({ error: "Usuário do token inválido. Por favor, autentique-se novamente." });
+    }
+    
+    return res.status(500).json({ error: "Erro interno ao criar o perfil." });
   }
 });
 
-// DELETE /profiles/:id - exclui perfil (com confirmações no front)
-router.delete("/profiles/:id", authMiddleware, async (req, res) => {
+// DELETE /profiles/:id - Excluir perfil por ID
+profilesRouter.delete("/profiles/:id", authMiddleware, async (req: AuthRequest, res) => { // Use a interface AuthRequest
+  const userId = req.user?.id;
+  const { id } = req.params;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Usuário não autenticado." });
+  }
+
   try {
-    const userId = (req as any).userId;
-    const { id } = req.params;
+    // Verifica se o perfil pertence ao usuário autenticado
+    const profile = await prisma.profile.findFirst({
+      where: { id, userId },
+    });
 
-    const profile = await prisma.profile.findUnique({ where: { id } });
-    if (!profile) return res.status(404).json({ error: "Perfil não encontrado" });
-    if (profile.userId !== userId) return res.status(403).json({ error: "Acesso negado" });
+    if (!profile) {
+      return res.status(404).json({ error: "Perfil não encontrado ou não pertence ao usuário." });
+    }
 
-    // Remove beneficiários associados primeiro
-    await prisma.beneficiary.deleteMany({ where: { profileId: id } });
-    await prisma.profile.delete({ where: { id } });
+    // Exclui o perfil
+    await prisma.profile.delete({
+      where: { id },
+    });
 
-    return res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Erro interno" });
+    res.json({ message: "Perfil excluído com sucesso." });
+  } catch (error) {
+    console.error("Erro ao excluir perfil:", error);
+    res.status(500).json({ error: "Erro ao excluir perfil" });
   }
 });
 
-export default router;
+export default profilesRouter;
