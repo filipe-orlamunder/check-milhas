@@ -1,0 +1,75 @@
+// -------------------------------------------
+// PRISMA SCHEMA - CHECK MILHAS (PostgreSQL)
+// -------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------
+// MODELOS
+// -------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  profiles     Profile[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Profile {
+  id            String        @id @default(cuid())
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  name          String
+  cpf           String
+  beneficiaries Beneficiary[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([userId, cpf])
+}
+
+model Beneficiary {
+  id           String    @id @default(cuid())
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId    String
+  program      Program
+  name         String
+  cpf          String
+  issueDate    DateTime
+  status       Status
+  previousName String?
+  previousCpf  String?
+  previousDate DateTime?
+  changeDate   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([profileId, program, cpf])
+}
+
+// -------------------------------------------
+// ENUMS
+// -------------------------------------------
+
+enum Program {
+  LATAM
+  SMILES
+  AZUL
+}
+
+enum Status {
+  UTILIZADO
+  LIBERADO
+  PENDENTE
+}

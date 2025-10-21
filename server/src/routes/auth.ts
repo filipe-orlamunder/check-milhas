@@ -1,109 +1,100 @@
-// src/routes/auth.ts
-import { Router } from "express";
-import { z, ZodError } from "zod";
+import { Router, Request, Response } from "express";
+import { prisma } from "../prisma";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { prisma } from "../prisma"; // Importar a instância do Prisma
+import { z, ZodError } from "zod";
 
-// --- Boas Práticas: Garantir que a chave secreta JWT exista ---
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error("ERRO FATAL: A variável de ambiente JWT_SECRET não está definida.");
-  process.exit(1); // Encerra a aplicação se a chave não existir
-}
-// ----------------------------------------------------------------
-
-const router = Router();
-
-// esquemas de validação com Zod
+// --- Esquemas de Validação com Zod ---
 const registerSchema = z.object({
-  name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
-  email: z.string().email("Formato de email inválido"),
-  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+  name: z.string().min(4, "O nome deve ter pelo menos 4 caracteres."),
+  email: z.string().email("Formato de e-mail inválido."),
+  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres."),
 });
 
 const loginSchema = z.object({
-  email: z.string().email("Formato de email inválido"),
-  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+  email: z.string().email("Formato de e-mail inválido."),
+  password: z.string().min(1, "A senha é obrigatória."),
 });
 
-// POST /auth/register
-router.post("/register", async (req, res) => {
+
+const router = Router();
+
+// --- Rota de Registro de Usuário ---
+router.post("/register", async (req: Request, res: Response) => {
   try {
-    const parsed = registerSchema.parse(req.body);
+    // 1. Valida o corpo da requisição
+    const { name, email, password } = registerSchema.parse(req.body);
 
-    // ✅ CORREÇÃO: Verificar se o usuário existe no banco de dados com Prisma
-    const existingUser = await prisma.user.findUnique({
-      where: { email: parsed.email },
-    });
-
+    // 2. Verifica a existência do e-mail no banco de dados
+    const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return res.status(409).json({ error: "Este email já está em uso" });
+      return res.status(409).json({ error: "E-mail já cadastrado." }); // 409 Conflict
     }
 
-    const passwordHash = await bcrypt.hash(parsed.password, 10);
+    // 3. Criptografa a senha antes de armazenar
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    // ✅ CORREÇÃO: Criar o novo usuário no banco de dados com Prisma
-    const newUser = await prisma.user.create({
-      data: {
-        name: parsed.name,
-        email: parsed.email,
-        passwordHash,
-      },
+    // 4. Cria o usuário no banco, retornando apenas dados públicos
+    const user = await prisma.user.create({
+      data: { name, email, passwordHash },
+      select: { id: true, name: true, email: true },
     });
 
-    const token = jwt.sign({ userId: newUser.id }, JWT_SECRET, {
+    // 5. Gera o token JWT para autenticação
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET!, {
       expiresIn: "7d",
     });
 
-    // Retorna o usuário sem o hash da senha
-    return res.status(201).json({
-      token,
-      user: { id: newUser.id, name: newUser.name, email: newUser.email },
-    });
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return res.status(400).json({ errors: err.flatten().fieldErrors });
+    return res.status(201).json({ token, user });
+
+  } catch (error) {
+    // Trata erros de validação do Zod
+    if (error instanceof ZodError) {
+      return res.status(400).json({ errors: error.flatten().fieldErrors });
     }
-    console.error("Erro no registro:", err);
-    return res.status(500).json({ error: "Erro interno do servidor" });
+    console.error("Erro no registro:", error);
+    return res.status(500).json({ error: "Erro interno ao registrar usuário." });
   }
 });
 
-// POST /auth/login
-router.post("/login", async (req, res) => {
+// --- Rota de Login de Usuário ---
+router.post("/login", async (req: Request, res: Response) => {
   try {
-    const parsed = loginSchema.parse(req.body);
+    // 1. Valida o corpo da requisição
+    const { email, password } = loginSchema.parse(req.body);
 
-    // ✅ CORREÇÃO: Buscar o usuário no banco de dados com Prisma
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.email },
-    });
-
+    // 2. Busca o usuário pelo e-mail
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
+      return res.status(401).json({ error: "Credenciais inválidas." }); // Mensagem genérica
     }
 
-    const isValid = await bcrypt.compare(parsed.password, user.passwordHash);
-    if (!isValid) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
+    // 3. Compara a senha enviada com o hash armazenado
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Credenciais inválidas." }); // Mensagem genérica
     }
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    // 4. Gera o token JWT para autenticação
+    const token = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "7d" }
+    );
 
-    // Retorna o usuário sem o hash da senha
-    return res.json({
+    // 5. Retorna o token e dados do usuário
+    return res.status(200).json({
       token,
       user: { id: user.id, name: user.name, email: user.email },
     });
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return res.status(400).json({ errors: err.flatten().fieldErrors });
+
+  } catch (error) {
+     // Trata erros de validação do Zod
+    if (error instanceof ZodError) {
+      return res.status(400).json({ errors: error.flatten().fieldErrors });
     }
-    console.error("Erro no login:", err);
-    return res.status(500).json({ error: "Erro interno do servidor" });
+    console.error("Erro no login:", error);
+    return res.status(500).json({ error: "Erro interno ao tentar fazer login." });
   }
 });
 

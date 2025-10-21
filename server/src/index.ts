@@ -1,4 +1,3 @@
-// src/index.ts
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -10,15 +9,13 @@ import beneficiariesRouter from "./routes/beneficiaries";
 import validationRouter from "./routes/validation";
 
 const app = express();
+// Configuração de middlewares
 app.use(cors());
 app.use(express.json());
 
 const port = process.env.PORT || 3000;
 
-/**
- * Swagger Specification
- * Documenta todas as rotas principais da API.
- */
+// Definição da Especificação OpenAPI (Swagger)
 const swaggerSpec = {
   openapi: "3.0.0",
   info: {
@@ -37,7 +34,7 @@ const swaggerSpec = {
       }
     },
     schemas: {
-      // =============== AUTH ==================
+      // Definições de esquema para Autenticação
       RegisterRequest: {
         type: "object",
         required: ["name", "email", "password"],
@@ -74,7 +71,7 @@ const swaggerSpec = {
         }
       },
 
-      // =============== PROFILES ==================
+      // Definições de esquema para Perfis
       ProfileRequest: {
         type: "object",
         required: ["name", "cpf"],
@@ -94,7 +91,7 @@ const swaggerSpec = {
         }
       },
 
-      // =============== BENEFICIARIES ==================
+      // Definições de esquema para Beneficiários
       BeneficiaryRequest: {
         type: "object",
         required: ["program", "name", "cpf", "issueDate"],
@@ -122,7 +119,7 @@ const swaggerSpec = {
         }
       },
 
-      // =============== VALIDATION ==================
+      // Definições de esquema para Validação Dinâmica
       ValidationDynamicResponse: {
         type: "object",
         properties: {
@@ -142,7 +139,7 @@ const swaggerSpec = {
     }
   },
   paths: {
-    // =============== AUTH ==================
+    // Rotas de Autenticação
     "/auth/register": {
       post: {
         tags: ["Auth"],
@@ -186,7 +183,7 @@ const swaggerSpec = {
       }
     },
 
-    // =============== PROFILES ==================
+    // Rotas de Perfis
     "/profiles": {
       get: {
         tags: ["Profiles"],
@@ -226,7 +223,7 @@ const swaggerSpec = {
       }
     },
 
-    // =============== BENEFICIARIES ==================
+    // Rotas de Beneficiários
     "/profiles/{profileId}/beneficiaries": {
       get: {
         tags: ["Beneficiaries"],
@@ -317,7 +314,7 @@ const swaggerSpec = {
       }
     },
 
-    // =============== VALIDAÇÃO DINÂMICA ==================
+    // Rotas de Validação Dinâmica
     "/validation-dynamic": {
       get: {
         tags: ["Validação Dinâmica"],
@@ -346,16 +343,16 @@ const swaggerSpec = {
   }
 };
 
-// === Swagger UI
+// Configura o middleware do Swagger UI
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// === Rotas
+// Configuração das rotas
 app.use("/auth", authRouter);
 app.use("/", profilesRouter);
 app.use("/", beneficiariesRouter);
 app.use("/", validationRouter);
 
-// === Start
+// Inicialização do servidor
 app.listen(port, () => {
   console.log(`🚀 Server rodando em http://localhost:${port}`);
   console.log(`📘 Swagger disponível em http://localhost:${port}/api-docs`);
