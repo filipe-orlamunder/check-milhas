@@ -157,6 +157,92 @@ function App() {
     );
   };
 
+  /**
+   * Lógica local para edição e substituição de beneficiários (especialmente AZUL).
+   */
+  useEffect(() => {
+    const onSubmitEdit = (e: any) => {
+      const ben: Beneficiary = e?.detail?.beneficiary;
+      if (!ben) return;
+
+      setBeneficiaries((prev) => {
+        // Regras locais para Azul: se houver substituição (CPF diferente), marcar ambos como Pendente e aplicar changeDate
+        if (ben.program === 'azul') {
+          const idx = prev.findIndex((b) => b.id === ben.id);
+          if (idx !== -1) {
+            // Edita beneficiário existente
+            const updated = [...prev];
+            const existing = updated[idx];
+            // Inicia alteração pendente se o CPF mudou
+            if (existing.cpf !== ben.cpf) {
+              const nowIso = new Date().toISOString();
+              // Beneficiário antigo se torna PENDENTE
+              updated[idx] = { ...existing, status: 'Pendente', changeDate: nowIso } as Beneficiary;
+              // Adiciona novo beneficiário como PENDENTE
+              updated.push({
+                ...ben,
+                id: Date.now().toString(),
+                status: 'Pendente',
+                previousBeneficiary: { name: existing.name, cpf: existing.cpf, issueDate: existing.issueDate },
+                previousCpf: existing.cpf,
+                previousName: existing.name,
+                previousDate: existing.issueDate,
+                changeDate: nowIso,
+              } as unknown as Beneficiary);
+            } else {
+              // Simples edição de campos
+              updated[idx] = { ...existing, ...ben } as Beneficiary;
+            }
+            return updated as Beneficiary[];
+          }
+        }
+
+        // Default: substitui beneficiário pelo ID
+        return prev.map((b) => (b.id === ben.id ? ({ ...b, ...ben } as Beneficiary) : b));
+      });
+    };
+
+    // Adiciona listener para submissão de edição
+    window.addEventListener('submitEditBeneficiary', onSubmitEdit as EventListener);
+    return () => window.removeEventListener('submitEditBeneficiary', onSubmitEdit as EventListener);
+  }, [setBeneficiaries]);
+
+  /**
+   * Lógica local para cancelar alteração pendente (Azul).
+   */
+  useEffect(() => {
+    const onCancel = (e: any) => {
+      const id: string = e?.detail?.id;
+      if (!id) return;
+
+      setBeneficiaries((prev) => {
+        // Encontra o beneficiário pendente alvo
+        const target = prev.find((b) => b.id === id);
+        if (!target) return prev;
+
+        if (target.previousBeneficiary) {
+          // Remove o novo e restaura o status do antigo.
+          const restored = prev
+            .filter((b) => b.id !== id)
+            .map((b) => {
+              // Restaura o beneficiário original que se tornou PENDENTE
+              if (b.cpf === target.previousBeneficiary?.cpf && b.program === 'azul') {
+                return ({ ...b, status: 'Utilizado', changeDate: undefined, previousBeneficiary: undefined } as Beneficiary);
+              }
+              return b;
+            }) as Beneficiary[];
+          return restored;
+        }
+
+        return prev;
+      });
+    };
+
+    // Adiciona listener para cancelamento de alteração
+    window.addEventListener('cancelChangeBeneficiary', onCancel as EventListener);
+    return () => window.removeEventListener('cancelChangeBeneficiary', onCancel as EventListener);
+  }, [setBeneficiaries]);
+
   // --- RENDERIZAÇÃO E ROTEAMENTO ---
 
   if (currentUser) {

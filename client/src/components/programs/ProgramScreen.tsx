@@ -1,6 +1,6 @@
-// src/components/programs/ProgramScreen.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Beneficiary, Profile } from "../../types";
+import { computeStatus, daysRemainingForAzul } from "../../utils/statusCalculator";
 import { ArrowLeft, Plus, Trash2, X, Save, Users } from "lucide-react";
 
 // Define as propriedades do componente
@@ -15,25 +15,33 @@ interface ProgramScreenProps {
 }
 
 // Funções utilitárias de validação e formatação
-const onlyDigits = (s: string) => s.replace(/\D/g, ""); // Remove caracteres não numéricos
+
+/** Remove caracteres não numéricos. */
+const onlyDigits = (s: string) => s.replace(/\D/g, "");
+/** Valida o comprimento do nome. */
 const validateName = (name: string) => {
   const l = name.trim().length;
   return l >= 4 && l <= 60;
 };
-const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf)); // Valida se o CPF tem 11 dígitos
+/** Valida se o CPF tem 11 dígitos. */
+const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf));
+/** Formata o CPF para exibição. */
 const formatCPF = (cpf: string) => {
   const d = onlyDigits(cpf);
   if (d.length !== 11) return cpf;
-  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4"); // Formata o CPF
+  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
 };
+/** Formata a data para exibição no formato DD/MM/AAAA. */
 const formatDate = (date: string) => {
   const d = new Date(date);
   return `${String(d.getDate()).padStart(2, "0")}/${String(
     d.getMonth() + 1
-  ).padStart(2, "0")}/${d.getFullYear()}`; // Formata a data para exibição
+  ).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
-// Componente principal da tela de programas
+/**
+ * Componente principal da tela de gerenciamento de beneficiários por programa.
+ */
 export const ProgramScreen: React.FC<ProgramScreenProps> = ({
   program,
   profile,
@@ -43,9 +51,26 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
   onDeleteBeneficiary,
   onDeleteAll,
 }) => {
-  // Estados para controlar modais e confirmação de exclusão
+  // Estados para controlar modais, confirmação de exclusão e edição.
   const [showModal, setShowModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [editBeneficiary, setEditBeneficiary] = useState<Beneficiary | null>(null);
+
+  /**
+   * Listener para evento global de abertura de modal de edição.
+   */
+  useEffect(() => {
+    const onOpen = (e: any) => {
+      const ben: Beneficiary | undefined = e?.detail?.beneficiary;
+      if (ben) {
+        setEditBeneficiary(ben);
+        setShowModal(true);
+      }
+    };
+
+    window.addEventListener('openEditBeneficiary', onOpen as EventListener);
+    return () => window.removeEventListener('openEditBeneficiary', onOpen as EventListener);
+  }, []);
 
   // Mapeamento de nomes de programas para exibição
   const programNames = {
@@ -54,10 +79,16 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
     azul: "Azul Fidelidade",
   };
 
-  // Filtra beneficiários do perfil e programa selecionados
-  const programBeneficiaries = beneficiaries.filter(
-    (b) => b.profileId === profile.id && b.program === program
-  );
+  /**
+   * Filtra beneficiários e recalcula o status dinamicamente na renderização.
+   */
+  const programBeneficiaries = beneficiaries
+    .filter((b) => b.profileId === profile.id && b.program === program)
+    .map((b) => ({
+      ...b,
+      // Recalcula o status na hora (incluindo lógica AZUL para 'isNewForAzul').
+      status: computeStatus(b.program, b.issueDate, (b as any).changeDate ?? null, new Date(), !!(b as any).previousCpf),
+    }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -139,33 +170,97 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
                     </h3>
                     <p className="text-sm text-gray-600">CPF: {b.cpf}</p>
                   </div>
-                  {/* Botão para exclusão individual */}
-                  <button
-                    onClick={() => setDeleteConfirm(b.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    {/* Botão para edição individual (dispara evento global) */}
+                    <button
+                      onClick={() => {
+                        // Dispara evento customizado para abrir modal de edição.
+                        const evt = new CustomEvent('openEditBeneficiary', { detail: { beneficiary: b } });
+                        window.dispatchEvent(evt);
+                      }}
+                      title="Editar beneficiário"
+                      className="p-2 text-gray-500 hover:text-gray-800 transition-colors rounded-lg hover:bg-gray-50"
+                    >
+                      <Save className="w-5 h-5" />
+                    </button>
+
+                    {/* Botão para exclusão individual */}
+                    <button
+                      onClick={() => setDeleteConfirm(b.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-600">
                   Data de cadastro: {formatDate(b.issueDate)}
                 </p>
+                {/* Exibe o status do beneficiário */}
+                <div className="mt-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm">
+                      Status:{' '}
+                      <span
+                        className={`font-semibold ${
+                          b.status === 'Utilizado'
+                            ? 'text-red-600'
+                            : b.status === 'Pendente'
+                            ? 'text-yellow-600'
+                            : 'text-green-600'
+                        }`}
+                      >
+                        {b.status}
+                      </span>
+                    </p>
+                    {program === 'azul' && b.status === 'Pendente' && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        Troca em andamento — faltam {daysRemainingForAzul((b as any).changeDate ?? null)} dias
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Mostra botão para cancelar alteração pendente (AZUL) */}
+                  {b.status === 'Pendente' && (b as any).previousCpf && (
+                    <button
+                      onClick={() => {
+                        // Dispara evento global para cancelar a alteração
+                        const evt = new CustomEvent('cancelChangeBeneficiary', { detail: { id: b.id } });
+                        window.dispatchEvent(evt);
+                      }}
+                      className="text-xs px-3 py-1 bg-gray-100 border rounded-lg text-gray-700 hover:bg-gray-200"
+                    >
+                      Cancelar alteração
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Renderiza o modal de adição de beneficiário */}
+      {/* Renderiza o modal de adição/edição de beneficiário */}
       {showModal && (
         <AddBeneficiaryModal
-          onClose={() => setShowModal(false)}
-          onSubmit={(beneficiary) => {
-            onAddBeneficiary(beneficiary);
+          onClose={() => {
             setShowModal(false);
+            setEditBeneficiary(null);
+          }}
+          onSubmit={(beneficiary, isEdit) => {
+            if (isEdit) {
+              // Emite evento customizado para o App.tsx atualizar o estado global
+              const evt = new CustomEvent('submitEditBeneficiary', { detail: { beneficiary } });
+              window.dispatchEvent(evt);
+            } else {
+              onAddBeneficiary(beneficiary);
+            }
+            setShowModal(false);
+            setEditBeneficiary(null);
           }}
           profileId={profile.id}
           program={program}
+          initialValue={editBeneficiary ?? undefined}
         />
       )}
 
@@ -206,24 +301,32 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
 // Componente do modal para adicionar um beneficiário
 interface AddBeneficiaryModalProps {
   onClose: () => void;
-  onSubmit: (beneficiary: Beneficiary) => void;
+  onSubmit: (beneficiary: Beneficiary, isEdit?: boolean) => void;
   profileId: string;
   program: "latam" | "smiles" | "azul";
+  initialValue?: Beneficiary;
 }
 
+/**
+ * Modal para adicionar ou editar um beneficiário.
+ */
 const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
   onClose,
   onSubmit,
   profileId,
   program,
+  initialValue,
 }) => {
   // Estados para gerenciar os campos do formulário e erros
-  const [name, setName] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [issueDate, setIssueDate] = useState("");
+  const [name, setName] = useState(initialValue?.name ?? "");
+  const [cpf, setCpf] = useState(initialValue?.cpf ?? "");
+  const [issueDate, setIssueDate] = useState(initialValue?.issueDate ?? "");
+  const isEdit = !!initialValue;
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Valida o formulário antes da submissão
+  /**
+   * Valida todos os campos do formulário e define as mensagens de erro.
+   */
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -236,6 +339,29 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
     if (!issueDate) {
       newErrors.issueDate = "Data é obrigatória";
     }
+    
+    if (issueDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const input = new Date(issueDate);
+      input.setHours(0, 0, 0, 0);
+      
+      // Não permitir data futura em nenhum programa
+      if (input > today) {
+        newErrors.issueDate = 'Data de cadastro não pode ser futura';
+      }
+      
+      // Regra AZUL: Restrição "não pode ser anterior" só se for substituição.
+      if (program === 'azul' && isEdit) {
+        const originalCpf = initialValue?.cpf ?? '';
+        const cpfDigits = onlyDigits(cpf);
+        const cpfChanged = cpfDigits !== originalCpf;
+        
+        if (cpfChanged && input < today) {
+          newErrors.issueDate = 'Data de cadastro não pode ser anterior à data atual para alterações (Azul)';
+        }
+      }
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -244,26 +370,41 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
   // Verifica se o formulário é válido para habilitar o botão
   const isFormValid = validateName(name) && validateCPF(cpf) && !!issueDate;
 
-  // Lida com a mudança no campo de CPF
+  // Lida com a mudança no campo de CPF, limitando a 11 dígitos
   const handleCpfChange = (value: string) => {
     const numbers = value.replace(/\D/g, "").slice(0, 11);
     setCpf(numbers);
   };
 
-  // Lida com a submissão do formulário
+  /**
+   * Lida com a submissão do formulário, calculando o status antes de enviar.
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
+      // Calcula o status dinâmico do beneficiário
+      const computedStatus = computeStatus(
+        program,
+        issueDate,
+        isEdit ? (initialValue as Beneficiary).changeDate ?? null : null,
+        new Date(),
+        // Define 'isNewForAzul' se o beneficiário atual for o substituto pendente
+        Boolean(isEdit && (initialValue as Beneficiary).previousBeneficiary)
+      );
+
       const newBeneficiary: Beneficiary = {
-        id: Date.now().toString(),
+        id: isEdit ? (initialValue as Beneficiary).id : Date.now().toString(),
         name: name.trim(),
         cpf: onlyDigits(cpf),
         issueDate,
-        status: "Liberado",
+        status: computedStatus,
         profileId,
         program,
+        previousBeneficiary: isEdit ? (initialValue as Beneficiary).previousBeneficiary : undefined,
+        changeDate: isEdit ? (initialValue as Beneficiary).changeDate : undefined,
       };
-      onSubmit(newBeneficiary);
+
+      onSubmit(newBeneficiary, isEdit);
     }
   };
 
@@ -274,7 +415,7 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
         {/* Cabeçalho do modal */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
-            Adicionar beneficiário
+            {isEdit ? "Editar Beneficiário" : "Adicionar Beneficiário"}
           </h2>
           <button
             onClick={onClose}
