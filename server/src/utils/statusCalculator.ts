@@ -1,14 +1,14 @@
 import { Program, Status } from "@prisma/client";
 
 /**
- * Calcula o Status de fidelidade de um beneficiário com base nas regras do programa.
+ * Calcula o status de um beneficiário com base nas regras do programa, datas de registro e uma data de referência.
  *
- * @param program Programa de fidelidade (LATAM, SMILES, AZUL).
- * @param issueDate Data original de inclusão do beneficiário.
- * @param changeDate Data da última alteração (relevante apenas para AZUL).
- * @param refDate Data de referência para o cálculo (padrão: hoje).
- * @param isNewForAzul Indica se é o novo beneficiário na troca (afeta o status pós-PENDENTE no AZUL).
- * @returns O status calculado: LIBERADO, UTILIZADO ou PENDENTE.
+ * @param program O programa de fidelidade (LATAM, SMILES, AZUL).
+ * @param issueDate A data de cadastro/emissão do beneficiário.
+ * @param changeDate A data de alteração (relevante para AZUL). Padrão: null.
+ * @param refDate A data de referência usada para a verificação de status. Padrão: data atual.
+ * @param isNewForAzul Indica se este é o beneficiário substituto no fluxo de AZUL. Padrão: false.
+ * @returns O status calculado (UTILIZADO, LIBERADO, PENDENTE).
  */
 export function computeStatus(
   program: Program,
@@ -17,35 +17,35 @@ export function computeStatus(
   refDate: Date = new Date(),
   isNewForAzul: boolean = false
 ): Status {
-  // A data de referência é usada para todas as decisões de tempo.
   if (program === "LATAM") {
-    // LATAM: Status UTILIZADO durante 12 meses.
+    // LATAM: Status Liberado após 12 meses da issueDate.
     const oneYear = new Date(issueDate);
     oneYear.setFullYear(oneYear.getFullYear() + 1);
     return refDate < oneYear ? Status.UTILIZADO : Status.LIBERADO;
   }
 
   if (program === "SMILES") {
-    // SMILES: UTILIZADO até o final do ano civil da issueDate.
+    // SMILES: Status Liberado no 1º de Janeiro do ano seguinte à issueDate.
     if (issueDate.getFullYear() < refDate.getFullYear()) return Status.LIBERADO;
-    const resetDate = new Date(issueDate.getFullYear() + 1, 0, 1); // 1º Jan do ano seguinte.
+    const resetDate = new Date(issueDate.getFullYear() + 1, 0, 1);
     return refDate < resetDate ? Status.UTILIZADO : Status.LIBERADO;
   }
 
   if (program === "AZUL") {
-    // AZUL: Lógica complexa de alteração.
+    // AZUL: Lógica de status PENDENTE baseada em changeDate (60 dias).
     if (changeDate) {
-      // Se houver troca, o status fica PENDENTE por 60 dias a partir da changeDate.
-      const finish = new Date(changeDate.getTime() + 60 * 24 * 60 * 60 * 1000); // 60 dias em milissegundos
+      // 60 dias em milissegundos
+      const finish = new Date(changeDate.getTime() + 60 * 24 * 60 * 60 * 1000); 
       if (refDate < finish) return Status.PENDENTE;
       
-      // Após 60 dias, o substituto fica UTILIZADO, e o substituído, LIBERADO.
+      // Após o período PENDENTE, o status depende se é o novo (UTILIZADO) ou o antigo (LIBERADO) beneficiário.
       return isNewForAzul ? Status.UTILIZADO : Status.LIBERADO;
     }
 
-    // Caso padrão sem troca: o beneficiário está UTILIZADO.
+    // Padrão: UTILIZADO se não houver changeDate.
     return Status.UTILIZADO;
   }
 
+  // Retorno padrão para programas não mapeados (ou como fallback).
   return Status.UTILIZADO;
 }

@@ -7,7 +7,7 @@ import { ProfileView } from "./components/dashboard/ProfileView";
 import { ProgramScreen } from "./components/programs/ProgramScreen";
 
 /**
- * Custom hook para gerenciar o estado local com persistência no localStorage.
+ * Hook customizado para gerenciar estado local com persistência no localStorage.
  */
 function useLocalState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
@@ -15,14 +15,14 @@ function useLocalState<T>(key: string, initialValue: T) {
       const raw = localStorage.getItem(key);
       if (raw === null) return initialValue;
 
-      // Tenta desserializar o JSON ou usa o valor bruto.
+      // Tenta desserializar JSON ou usa valor bruto.
       try {
         return JSON.parse(raw) as T;
       } catch {
         return (raw as unknown) as T;
       }
     } catch {
-      // Retorna o valor inicial em caso de erro no acesso ao localStorage.
+      // Retorna o valor inicial em caso de erro ao acessar localStorage.
       return initialValue;
     }
   });
@@ -30,12 +30,12 @@ function useLocalState<T>(key: string, initialValue: T) {
   useEffect(() => {
     try {
       if (state === null) {
-        // Remove o item se o estado for null (ex: logout).
+        // Remove o item se o estado for null (limpeza).
         localStorage.removeItem(key);
         return;
       }
 
-      // Armazena primitivos como string simples.
+      // Serializa valores primitivos como string.
       if (
         typeof state === "string" ||
         typeof state === "number" ||
@@ -45,10 +45,10 @@ function useLocalState<T>(key: string, initialValue: T) {
         return;
       }
 
-      // Armazena objetos/arrays como JSON.
+      // Serializa objetos/arrays como JSON.
       localStorage.setItem(key, JSON.stringify(state));
     } catch {
-      // Ignora erros de escrita no localStorage.
+      // Ignora erros de escrita.
     }
   }, [key, state]);
 
@@ -56,10 +56,10 @@ function useLocalState<T>(key: string, initialValue: T) {
 }
 
 /**
- * Componente principal da aplicação, responsável pelo roteamento e estado global.
+ * Componente principal da aplicação, responsável pelo estado global e roteamento.
  */
 function App() {
-  // Gerenciamento de navegação e autenticação
+  // Estado para gerenciamento de navegação e autenticação
   const [currentScreen, setCurrentScreen] = useLocalState<Screen>(
     "currentScreen",
     "login"
@@ -70,7 +70,7 @@ function App() {
   );
   const [token, setToken] = useLocalState<string | null>("token", null);
 
-  // Gerenciamento de dados locais
+  // Estado para gerenciamento de dados da aplicação
   const [users, setUsers] = useLocalState<User[]>("users", []);
   const [profiles, setProfiles] = useLocalState<Profile[]>("profiles", []);
   const [beneficiaries, setBeneficiaries] = useLocalState<Beneficiary[]>(
@@ -80,13 +80,13 @@ function App() {
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
 
   /**
-   * Handler de login: define usuário, token e navega para o dashboard.
+   * Gerencia o login: define usuário, token e navega para o dashboard.
    */
   const handleLogin = (user: User, tokenFromServer?: string | null) => {
     if (tokenFromServer) {
       setToken(tokenFromServer);
     }
-    // Adiciona o usuário se for novo.
+    // Adiciona o usuário à lista, se for novo.
     setUsers((prev) => {
       if (!prev.some((u) => u.email === user.email)) return [...prev, user];
       return prev;
@@ -96,7 +96,7 @@ function App() {
   };
 
   /**
-   * Handler de logout: limpa dados de autenticação e volta para o login.
+   * Gerencia o logout: limpa dados de autenticação e volta para o login.
    */
   const handleLogout = () => {
     setCurrentUser(null);
@@ -105,7 +105,7 @@ function App() {
   };
 
   /**
-   * Handler de cadastro: define usuário, token e navega para o dashboard.
+   * Gerencia o cadastro: define usuário, token e navega para o dashboard.
    */
   const handleSignup = (user: User, tokenFromServer?: string | null) => {
     if (tokenFromServer) {
@@ -117,14 +117,14 @@ function App() {
   };
 
   /**
-   * Adiciona um novo perfil à lista.
+   * Adiciona um novo perfil à lista de perfis.
    */
   const handleAddProfile = (profile: Profile) => {
     setProfiles((prev) => [...prev, profile]);
   };
 
   /**
-   * Deleta um perfil e todos os beneficiários associados.
+   * Remove um perfil e todos os beneficiários associados.
    */
   const handleDeleteProfile = (profileId: string) => {
     setProfiles((prev) => prev.filter((p) => p.id !== profileId));
@@ -132,21 +132,21 @@ function App() {
   };
 
   /**
-   * Adiciona um novo beneficiário.
+   * Adiciona um novo beneficiário à lista.
    */
   const handleAddBeneficiary = (beneficiary: Beneficiary) => {
     setBeneficiaries((prev) => [...prev, beneficiary]);
   };
 
   /**
-   * Deleta um beneficiário por ID.
+   * Remove um beneficiário específico por ID.
    */
   const handleDeleteBeneficiary = (id: string) => {
     setBeneficiaries((prev) => prev.filter((b) => b.id !== id));
   };
 
   /**
-   * Deleta todos os beneficiários de um perfil em um programa específico.
+   * Remove todos os beneficiários de um perfil em um programa específico.
    */
   const handleDeleteAllBeneficiaries = (
     profileId: string,
@@ -158,7 +158,7 @@ function App() {
   };
 
   /**
-   * Lógica local para edição e substituição de beneficiários (especialmente AZUL).
+   * Efeito para tratar a edição de beneficiário, incluindo lógica de substituição para 'azul'.
    */
   useEffect(() => {
     const onSubmitEdit = (e: any) => {
@@ -166,19 +166,18 @@ function App() {
       if (!ben) return;
 
       setBeneficiaries((prev) => {
-        // Regras locais para Azul: se houver substituição (CPF diferente), marcar ambos como Pendente e aplicar changeDate
+        // Lógica de substituição específica para o programa Azul
         if (ben.program === 'azul') {
           const idx = prev.findIndex((b) => b.id === ben.id);
           if (idx !== -1) {
-            // Edita beneficiário existente
             const updated = [...prev];
             const existing = updated[idx];
-            // Inicia alteração pendente se o CPF mudou
+            // Se o CPF for alterado, inicia a substituição pendente
             if (existing.cpf !== ben.cpf) {
               const nowIso = new Date().toISOString();
-              // Beneficiário antigo se torna PENDENTE
+              // O beneficiário anterior se torna 'Pendente'
               updated[idx] = { ...existing, status: 'Pendente', changeDate: nowIso } as Beneficiary;
-              // Adiciona novo beneficiário como PENDENTE
+              // Adiciona o novo beneficiário também como 'Pendente'
               updated.push({
                 ...ben,
                 id: Date.now().toString(),
@@ -190,25 +189,24 @@ function App() {
                 changeDate: nowIso,
               } as unknown as Beneficiary);
             } else {
-              // Simples edição de campos
-              updated[idx] = { ...existing, ...ben } as Beneficiary;
+              // Edição simples de outros campos
+                updated[idx] = { ...existing, ...ben } as Beneficiary;
             }
             return updated as Beneficiary[];
           }
         }
 
-        // Default: substitui beneficiário pelo ID
+        // Caso padrão: substituição por ID
         return prev.map((b) => (b.id === ben.id ? ({ ...b, ...ben } as Beneficiary) : b));
       });
     };
 
-    // Adiciona listener para submissão de edição
     window.addEventListener('submitEditBeneficiary', onSubmitEdit as EventListener);
     return () => window.removeEventListener('submitEditBeneficiary', onSubmitEdit as EventListener);
   }, [setBeneficiaries]);
 
   /**
-   * Lógica local para cancelar alteração pendente (Azul).
+   * Efeito para cancelar uma alteração pendente (regra do Azul).
    */
   useEffect(() => {
     const onCancel = (e: any) => {
@@ -216,29 +214,23 @@ function App() {
       if (!id) return;
 
       setBeneficiaries((prev) => {
-        // Encontra o beneficiário pendente alvo
         const target = prev.find((b) => b.id === id);
-        if (!target) return prev;
+        if (!target || !target.previousBeneficiary) return prev;
 
-        if (target.previousBeneficiary) {
-          // Remove o novo e restaura o status do antigo.
-          const restored = prev
-            .filter((b) => b.id !== id)
-            .map((b) => {
-              // Restaura o beneficiário original que se tornou PENDENTE
-              if (b.cpf === target.previousBeneficiary?.cpf && b.program === 'azul') {
-                return ({ ...b, status: 'Utilizado', changeDate: undefined, previousBeneficiary: undefined } as Beneficiary);
-              }
-              return b;
-            }) as Beneficiary[];
-          return restored;
-        }
-
-        return prev;
+        // Remove o beneficiário 'novo' (pendente) e restaura o 'antigo'
+        const restored = prev
+          .filter((b) => b.id !== id)
+          .map((b) => {
+            if (b.cpf === target.previousBeneficiary?.cpf && b.program === 'azul') {
+              // Restaura o status do beneficiário anterior para 'Utilizado'
+              return ({ ...b, status: 'Utilizado', changeDate: undefined, previousBeneficiary: undefined } as Beneficiary);
+            }
+            return b;
+          }) as Beneficiary[];
+        return restored;
       });
     };
 
-    // Adiciona listener para cancelamento de alteração
     window.addEventListener('cancelChangeBeneficiary', onCancel as EventListener);
     return () => window.removeEventListener('cancelChangeBeneficiary', onCancel as EventListener);
   }, [setBeneficiaries]);
@@ -274,6 +266,7 @@ function App() {
       );
     }
 
+    // Roteamento para as telas de programas de milhagem
     if (
       (currentScreen === "latam" ||
         currentScreen === "smiles" ||

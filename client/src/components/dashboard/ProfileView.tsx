@@ -4,27 +4,30 @@ import { Profile } from '../../types';
 import { ArrowLeft, Star } from 'lucide-react';
 import { Button } from '../common/Button';
 
-// Define as propriedades do componente
+// Define as propriedades de entrada do componente
 interface ProfileViewProps {
   profile: Profile;
   onBack: () => void;
   onSelectProgram: (program: 'latam' | 'smiles' | 'azul') => void;
 }
 
-// Componente para a visualização de um perfil específico
+/**
+ * Componente de visualização detalhada de um perfil específico.
+ * Permite a navegação para os programas de fidelidade associados.
+ */
 export const ProfileView: React.FC<ProfileViewProps> = ({
   profile,
   onBack,
   onSelectProgram,
 }) => {
-  // Estrutura da tela de visualização do perfil
+  // Renderização da interface
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Cabeçalho do perfil */}
+      {/* Cabeçalho da visualização de perfil */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {/* Botão de voltar */}
+            {/* Botão de retorno ao Dashboard */}
             <button
               onClick={onBack}
               className="p-2 text-gray-600 hover:text-gray-800 transition-colors"
@@ -42,7 +45,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* Lista de programas de fidelidade */}
+      {/* Seção principal: Cartões de Programas de Fidelidade */}
       <div className="max-w-6xl mx-auto px-4 py-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
         {/* Cartão do programa LATAM Pass */}
         <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col justify-between">
@@ -59,7 +62,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <h2 className="text-lg font-semibold text-gray-900 mb-2">Smiles</h2>
             <p className="text-sm text-gray-600 mb-4">Gerencie beneficiários do programa de fidelidade Smiles</p>
           </div>
-          <Button className="bg-yellow-500 hover:bg-yellow-600 text-white" onClick={() => onSelectProgram('smiles')}>Acessar</Button>
+          <Button className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => onSelectProgram('smiles')}>Acessar</Button>
         </div>
 
         {/* Cartão do programa Azul Fidelidade */}

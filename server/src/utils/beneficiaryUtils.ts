@@ -1,41 +1,36 @@
 import { Program, Status } from "@prisma/client";
 
 /**
- * Calcula o status de utilização de um beneficiário com base nas regras do programa.
- *
- * NOTA: Esta função utiliza a data atual (`new Date()`) como referência.
+ * Calcula o status de um beneficiário com base no programa e nas datas de emissão/alteração.
  * @param program O programa de fidelidade (LATAM, SMILES, AZUL).
- * @param issueDate Data de inclusão/emissão do beneficiário.
- * @param changeDate Data da última alteração (relevante apenas para AZUL).
- * @returns O status calculado.
+ * @param issueDate A data de emissão/inclusão do beneficiário.
+ * @param changeDate A data de alteração mais recente (opcional, relevante para AZUL).
+ * @returns O status calculado (UTILIZADO, LIBERADO, PENDENTE).
  */
 export function computeStatus(program: Program, issueDate: Date, changeDate?: Date | null): Status {
-  // Define a data atual como ponto de referência para todos os cálculos.
   const now = new Date();
 
   if (program === "LATAM") {
-    // LATAM: Status UTILIZADO durante 1 ano a partir da issueDate.
+    // LATAM: Liberado após 1 ano da data de emissão.
     const oneYear = new Date(issueDate);
     oneYear.setFullYear(oneYear.getFullYear() + 1);
     return now < oneYear ? "UTILIZADO" : "LIBERADO";
   }
 
   if (program === "SMILES") {
-    // SMILES: Liberado se a emissão ocorreu em um ano anterior ao ano atual.
+    // SMILES: Liberado no início do ano seguinte à data de emissão.
     if (issueDate.getFullYear() < now.getFullYear()) return "LIBERADO";
-    // UTILIZADO até 1º de janeiro do ano seguinte.
-    const resetDate = new Date(issueDate.getFullYear() + 1, 0, 1);
+    const resetDate = new Date(issueDate.getFullYear() + 1, 0, 1); // 1º de Janeiro do próximo ano
     return now < resetDate ? "UTILIZADO" : "LIBERADO";
   }
 
   if (program === "AZUL") {
-    // AZUL: Regra de PENDENTE (60 dias) após uma alteração.
     if (changeDate) {
-      // 60 dias em milissegundos.
+      // AZUL: PENDENTE por 60 dias após a data de alteração (se houver).
+      // 60 dias em milissegundos: 60 * 24 horas * 60 minutos * 60 segundos * 1000 ms
       const finish = new Date(changeDate.getTime() + 60 * 24 * 60 * 60 * 1000);
       return now < finish ? "PENDENTE" : "LIBERADO";
     }
-    // Caso padrão sem alteração: UTILIZADO.
     return "UTILIZADO";
   }
 
@@ -43,9 +38,9 @@ export function computeStatus(program: Program, issueDate: Date, changeDate?: Da
 }
 
 /**
- * Valida se a string fornecida contém exatamente 11 dígitos.
+ * Valida se a string fornecida corresponde a um CPF de 11 dígitos.
  * @param cpf A string a ser validada.
- * @returns Verdadeiro se o CPF for válido (11 dígitos).
+ * @returns true se o CPF for válido (apenas 11 dígitos numéricos), false caso contrário.
  */
 export function isCpfValid(cpf: string) {
   return /^\d{11}$/.test(cpf);

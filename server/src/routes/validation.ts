@@ -1,29 +1,38 @@
-// src/routes/validation.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { computeStatus } from "../utils/statusCalculator";
+import parseDateOnlyToLocal from "../utils/dateUtils";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { Program, Status } from "@prisma/client";
 
 const router = Router();
 
+// Regex para validar o formato de data YYYY-MM-DD.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
- * GET /validation-dynamic?date=YYYY-MM-DD
- * Retorna, para cada profile do usuário logado, quantos "disponíveis" existem por programa.
+ * GET /validation-dynamic
+ * Calcula o número de vagas "disponíveis" por programa para cada perfil do usuário logado.
+ * Aceita um parâmetro de consulta 'date' opcional (YYYY-MM-DD) para cálculo de status.
  */
 router.get("/validation-dynamic", authMiddleware, async (req, res) => {
   try {
     const userId = (req as any).userId;
     const dateParam = req.query.date as string | undefined;
-    const refDate = dateParam ? new Date(dateParam) : new Date();
 
-    // carregar perfis do usuário com beneficiários
+    if (dateParam && !DATE_RE.test(dateParam)) {
+      return res.status(400).json({ error: 'Formato de data inválido. Use YYYY-MM-DD' });
+    }
+    const refDate = dateParam ? parseDateOnlyToLocal(dateParam) : new Date();
+
+    // Carrega perfis do usuário, incluindo a lista de beneficiários.
     const profiles = await prisma.profile.findMany({
       where: { userId },
       include: { beneficiaries: true }
     });
 
     const results = profiles.map(profile => {
+      // Define limites de beneficiários por programa.
       const progLimits: Record<Program, number> = { LATAM: 25, SMILES: 25, AZUL: 5 };
 
       const available: Record<string, number> = { LATAM: 0, SMILES: 0, AZUL: 0 };
@@ -32,19 +41,20 @@ router.get("/validation-dynamic", authMiddleware, async (req, res) => {
         const bens = profile.beneficiaries.filter(b => b.program === prog);
 
         if (prog === "AZUL") {
-          // AZUL: apenas vagas livres (não considerar pendente/liberado)
+          // Lógica para AZUL: calcula vagas livres sem considerar status.
           const limit = progLimits[prog];
           const free = limit - bens.length;
           available[prog] = free < 0 ? 0 : free;
         } else {
-          // LATAM / SMILES:
+          // Lógica para LATAM/SMILES: considera beneficiários LIBERADOS na refDate.
           const limit = progLimits[prog];
           const totalRegistered = bens.length;
-          // contar quantos desses estarão LIBERADOS na refDate
+          
           const liberados = bens.filter(b => {
             return computeStatus(prog, b.issueDate, b.changeDate ?? null, refDate) === Status.LIBERADO;
           }).length;
-          // regra: disponíveis = (limit - totalRegistered) + liberados
+          
+          // Cálculo de vagas disponíveis.
           let val = (limit - totalRegistered) + liberados;
           if (val < 0) val = 0;
           available[prog] = val;

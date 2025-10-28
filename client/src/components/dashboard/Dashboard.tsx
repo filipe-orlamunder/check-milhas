@@ -6,7 +6,7 @@ import { Users, Plus, LogOut, Trash2, CheckCircle } from 'lucide-react';
 import { DynamicValidation } from "../programs/DynamicValidation";
 import { Button } from '../common/Button';
 
-// Define as propriedades do componente
+// Definição das propriedades obrigatórias do Dashboard
 interface DashboardProps {
   user: User;
   profiles: Profile[];
@@ -17,7 +17,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-// Componente principal do painel de controle
+// Componente principal do painel de controle do usuário
 export const Dashboard: React.FC<DashboardProps> = ({
   user,
   profiles,
@@ -27,17 +27,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectProfile,
   onLogout,
 }) => {
-  // Estados para controlar a exibição de modais e formulários
+  // Estados para gerenciamento de modais e formulários
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
-  // Filtra os perfis do usuário atual
+  // Filtra perfis pertencentes ao usuário logado
   const userProfiles = profiles.filter((p) => p.userId === user.id);
-  // Verifica se o usuário pode adicionar mais perfis (limite de 10)
+  // Limita a criação de perfis a 10
   const canAddProfile = userProfiles.length < 10;
 
-  // Calcula as estatísticas de beneficiários por programa para um perfil
+  /**
+   * Calcula a contagem de beneficiários de um perfil por programa.
+   * @param profileId O ID do perfil.
+   * @returns Estatísticas de beneficiários.
+   */
   const getProfileStats = (profileId: string) => {
     const profileBeneficiaries = beneficiaries.filter((b) => b.profileId === profileId);
     return {
@@ -47,19 +51,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   };
 
-  // Lida com a exclusão de um perfil
+  /**
+   * Executa a exclusão de um perfil após a confirmação.
+   * @param profileId O ID do perfil a ser excluído.
+   */
   const handleDeleteProfile = (profileId: string) => {
     onDeleteProfile(profileId);
     setDeleteConfirm(null);
   };
   
-  // Estrutura da tela principal
+  // Renderização da interface do painel
   return (
     <>
-      {/* Cabeçalho do dashboard */}
+      {/* Container principal e layout */}
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="bg-white shadow-sm border-b">
           <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            {/* Informações do usuário e título */}
             <div className="flex items-center space-x-3">
               <div className="bg-blue-600 w-10 h-10 rounded-lg flex items-center justify-center">
                 <Users className="w-6 h-6 text-white" />
@@ -70,7 +78,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            {/* Botão de sair */}
+            {/* Botão de Logout */}
             <button
               onClick={onLogout}
               className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
@@ -81,17 +89,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Seção de gerenciamento de perfis */}
+        {/* Conteúdo principal: Gerenciamento de Perfis */}
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 space-y-4 lg:space-y-0">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Gerenciamento de perfis</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Gerenciamento de Perfis</h2>
               <p className="text-gray-600">{userProfiles.length} de 10 perfis cadastrados</p>
             </div>
 
-            {/* Botões de ação */}
+            {/* Ações: Validação e Adicionar Perfil */}
             <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full lg:w-auto">
-              {/* Botão para validação dinâmica */}
+              {/* Botão para abrir a Validação Dinâmica */}
               <Button
                 onClick={() => setShowValidation(true)}
                 className="flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -100,7 +108,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span>Validação Dinâmica</span>
               </Button>
 
-              {/* Botão para adicionar perfil */}
+              {/* Botão para abrir o formulário de Adicionar Perfil */}
               <Button
                 onClick={() => setShowProfileForm(true)}
                 disabled={!canAddProfile}
@@ -117,9 +125,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* Exibe mensagem se não houver perfis ou a lista de perfis */}
+          {/* Exibição condicional: Lista de Perfis ou Mensagem de Vazio */}
           {userProfiles.length === 0 ?
             (
+              // Mensagem de "Nenhum perfil cadastrado"
               <div className="text-center py-16">
                 <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Users className="w-10 h-10 text-gray-400" />
@@ -128,7 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <p className="text-gray-600 mb-6">Comece adicionando seu primeiro perfil</p>
               </div>
             ) : (
-              // Lista de perfis
+              // Grade de cartões de perfis
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {userProfiles.map((profile) => {
                   const stats = getProfileStats(profile.id);
@@ -141,18 +150,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1">
                             <h3 className="text-lg font-semibold text-gray-900 mb-1">{profile.name}</h3>
-                            <p className="text-gray-600 text-sm">CPF: {profile.cpf}</p>
+                            <p className="text-lg font-semibold text-gray-900">CPF: {profile.cpf}</p>
                           </div>
-                          {/* Botão de excluir perfil */}
+                          {/* Botão para iniciar a confirmação de exclusão */}
                           <button
                             onClick={() => setDeleteConfirm(profile.id)}
+                            title="Excluir perfil"
                             className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
                           >
                             <Trash2 className="w-5 h-5" />
                           </button>
                         </div>
 
-                        {/* Estatísticas de beneficiários por programa */}
+                        {/* Detalhes de beneficiários por programa */}
                         <div className="space-y-3 mb-6">
                           <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">LATAM Pass</span>
@@ -168,7 +178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </div>
 
-                        {/* Botão para acessar o perfil */}
+                        {/* Botão de navegação para a tela do perfil */}
                         <button
                           onClick={() => onSelectProfile(profile)}
                           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -184,7 +194,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Renderiza o formulário de perfil se o estado for verdadeiro */}
+      {/* Formulário modal para criação de perfil */}
       {showProfileForm && (
         <ProfileForm
           onSubmit={(profile) => { onAddProfile(profile); setShowProfileForm(false); }}
@@ -194,21 +204,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Modal de confirmação de exclusão */}
+      {/* Modal de confirmação para exclusão de perfil */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirmar Exclusão</h3>
             <p className="text-gray-600 mb-6">Tem certeza que deseja excluir este perfil? Esta ação não poderá ser desfeita.</p>
             <div className="flex space-x-3">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">Cancelar</button>
-              <button onClick={() => handleDeleteProfile(deleteConfirm)} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>
+              <Button onClick={() => setDeleteConfirm(null)} variant="secondary" className="flex-1">Cancelar</Button>
+              <Button onClick={() => handleDeleteProfile(deleteConfirm)} variant="danger" className="flex-1">Excluir</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de validação dinâmica */}
+      {/* Modal para Validação Dinâmica de beneficiários */}
       {showValidation && (
         <DynamicValidation profiles={userProfiles} beneficiaries={beneficiaries} onClose={() => setShowValidation(false)} />
       )}
