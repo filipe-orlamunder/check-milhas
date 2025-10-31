@@ -1,8 +1,9 @@
 // src/components/programs/ProgramScreen.tsx
 import React, { useState, useEffect } from "react";
+import { onlyDigits, formatCPF } from "../../utils/formatters";
 import { Beneficiary, Profile } from "../../types";
-import { computeStatus, daysRemainingForAzul } from "../../utils/statusCalculator";
-import { ArrowLeft, Plus, Trash2, X, Users, Pencil } from "lucide-react";
+import { computeStatus } from "../../utils/statusCalculator";
+import { ArrowLeft, Plus, Trash2, X, Users, Pencil, Repeat } from "lucide-react";
 import { Button } from "../common/Button";
 
 // Define as propriedades do componente
@@ -17,17 +18,11 @@ interface ProgramScreenProps {
 }
 
 // Funções utilitárias de validação e formatação
-const onlyDigits = (s: string) => s.replace(/\D/g, ""); // Remove caracteres não numéricos
 const validateName = (name: string) => {
   const l = name.trim().length;
   return l >= 4 && l <= 60;
 };
 const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf)); // Valida se o CPF tem 11 dígitos
-const formatCPF = (cpf: string) => {
-  const d = onlyDigits(cpf);
-  if (d.length !== 11) return cpf;
-  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4"); // Formata o CPF
-};
 // Parsea YYYY-MM-DD como data local para evitar deslocamentos por UTC
 const parseDateOnlyToLocal = (input: string | Date | undefined): Date => {
   if (!input) return new Date();
@@ -78,6 +73,8 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [editBeneficiary, setEditBeneficiary] = useState<Beneficiary | null>(null);
+  const [exchangeMode, setExchangeMode] = useState(false);
+  const [exchangePreviousCpf, setExchangePreviousCpf] = useState<string | null>(null);
 
   // ...existing code...
 
@@ -90,13 +87,27 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
       status: computeStatus(b.program, b.issueDate, (b as any).changeDate ?? null, new Date(), !!(b as any).previousCpf),
     }));
 
+  // Estado para intervalo de atualização do contador de dias
+  const [, setUpdateTick] = useState(0);
+
+  // Atualiza o contador de dias restantes a cada hora
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setUpdateTick(t => t + 1);
+    }, 1000 * 60 * 60); // Atualiza a cada hora
+    return () => clearInterval(timer);
+  }, []);
+
   // Lógica de limite de beneficiários
   let maxBeneficiaries = 25;
   let currentCount = programBeneficiaries.length;
   if (program === 'azul') {
-    // Para Azul, cada troca pendente conta como 1
-    const pendentes = programBeneficiaries.filter((b: Beneficiary) => b.status === 'Pendente');
-    currentCount = programBeneficiaries.length - pendentes.length + (pendentes.length > 0 ? 1 : 0);
+    // Para Azul, durante trocas, dois pendentes contam como 1 (agrupar por changeDate)
+    const pendentes = programBeneficiaries.filter((b: Beneficiary) => b.status === 'Pendente' && (b as any).changeDate);
+    const groupKeys = new Set<string>(pendentes.map((b: any) => b.changeDate as string));
+    const pendingGroups = groupKeys.size;
+    const nonPendingCount = programBeneficiaries.length - pendentes.length;
+    currentCount = nonPendingCount + pendingGroups;
     maxBeneficiaries = 5;
   }
   const canAddBeneficiary = currentCount < maxBeneficiaries;
@@ -106,6 +117,8 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
       const ben: Beneficiary | undefined = e?.detail?.beneficiary;
       if (ben) {
         setEditBeneficiary(ben);
+        setExchangeMode(false);
+        setExchangePreviousCpf(null);
         setShowModal(true);
       }
     };
@@ -208,7 +221,7 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
                     <h3 className="text-lg font-semibold text-gray-900">
                       {b.name}
                     </h3>
-                    <p className="text-lg font-semibold text-gray-900">CPF: {b.cpf}</p>
+                    <p className="text-lg font-semibold text-gray-900">CPF: {formatCPF(b.cpf)}</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {/* Botão para edição individual */}
@@ -219,17 +232,54 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
                         const evt = new CustomEvent('openEditBeneficiary', { detail: { beneficiary: b } });
                         window.dispatchEvent(evt);
                       }}
-                      title="Editar beneficiário"
-                      className="p-2 text-gray-500 hover:text-gray-800 transition-colors rounded-lg hover:bg-gray-50"
+                      disabled={b.status === 'Pendente'}
+                      title={b.status === 'Pendente' ? 'Este beneficiário está em processo de alteração' : 'Editar beneficiário'}
+                      className={`p-2 transition-colors rounded-lg ${
+                        b.status === 'Pendente'
+                          ? 'text-gray-300 cursor-not-allowed'
+                          : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                      }`}
                     >
                       <Pencil className="w-5 h-5" />
                     </button>
 
+                    {/* Botão específico do Azul para iniciar a troca */}
+                    {program === 'azul' && (
+                      <button
+                        onClick={() => {
+                          // Abre o modal em modo 'troca'. Mantemos o initialValue para
+                          // que a submissão seja tratada como edição (submitEditBeneficiary)
+                          // porém os campos serão iniciados vazios no modal quando exchange=true.
+                          setEditBeneficiary(b);
+                          setExchangeMode(true);
+                          setExchangePreviousCpf(b.cpf);
+                          setShowModal(true);
+                        }}
+                        disabled={b.status === 'Pendente'}
+                        title={b.status === 'Pendente' ? 'Este beneficiário está em processo de alteração' : 'Trocar beneficiário'}
+                        className={`p-2 transition-colors rounded-lg ${
+                          b.status === 'Pendente'
+                            ? 'text-gray-300 cursor-not-allowed'
+                            : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                        }`}
+                      >
+                        <Repeat className="w-5 h-5" />
+                      </button>
+                    )}
+
                     {/* Botão para exclusão individual */}
                     <button
                       onClick={() => setDeleteConfirm(b.id)}
-                      title="Excluir beneficiário"
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+                      disabled={program === 'azul' && b.status === 'Pendente'}
+                      title={program === 'azul' && b.status === 'Pendente' 
+                        ? 'Não é possível excluir um beneficiário em processo de alteração'
+                        : 'Excluir beneficiário'
+                      }
+                      className={`p-2 transition-colors rounded-lg ${
+                        program === 'azul' && b.status === 'Pendente'
+                          ? 'text-gray-300 cursor-not-allowed'
+                          : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                      }`}
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
@@ -255,9 +305,22 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
                         {b.status}
                       </span>
                     </p>
-                    {program === 'azul' && b.status === 'Pendente' && (
+                    {program === 'azul' && b.status === 'Pendente' && (b as any).previousCpf && (
                       <p className="text-xs text-gray-600 mt-1">
-                        Troca em andamento — faltam {daysRemainingForAzul((b as any).changeDate ?? null)} dias
+                        {(() => {
+                          // Cálculo correto dos dias restantes
+                          const stripTime = (d: Date) => {
+                            const x = new Date(d);
+                            x.setHours(0, 0, 0, 0);
+                            return x;
+                          };
+                          const issueDate = stripTime(parseDateOnlyToLocal(b.issueDate));
+                          const today = stripTime(new Date());
+                          const diffMs = today.getTime() - issueDate.getTime();
+                          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                          const daysLeft = Math.max(60 - diffDays, 0);
+                          return `Troca em andamento — faltam ${daysLeft} dias para completar os 60 dias desde ${formatDate(b.issueDate)}`;
+                        })()}
                       </p>
                     )}
                   </div>
@@ -288,6 +351,8 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
           onClose={() => {
             setShowModal(false);
             setEditBeneficiary(null);
+            setExchangeMode(false);
+            setExchangePreviousCpf(null);
           }}
           onSubmit={(beneficiary, isEdit) => {
             if (isEdit) {
@@ -299,10 +364,15 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
             }
             setShowModal(false);
             setEditBeneficiary(null);
+            setExchangeMode(false);
+            setExchangePreviousCpf(null);
           }}
           profileId={profile.id}
           program={program}
           initialValue={editBeneficiary ?? undefined}
+          exchange={exchangeMode}
+          previousCpf={exchangePreviousCpf ?? undefined}
+          existingCpfs={programBeneficiaries.map((b) => b.cpf)}
         />
       )}
 
@@ -389,6 +459,16 @@ interface AddBeneficiaryModalProps {
   profileId: string;
   program: "latam" | "smiles" | "azul";
   initialValue?: Beneficiary;
+  // exchange: quando true, o modal funciona no fluxo de TROCA (Azul).
+  // Nesse caso o modal será renderizado com campos vazios (para cadastrar
+  // o novo beneficiário), mas a submissão continuará sendo enviada como
+  // uma edição (isEdit=true) para que o App trate a substituição do Azul.
+  exchange?: boolean;
+  // CPF do beneficiário anterior — usado para evitar cadastrar o mesmo CPF
+  // durante a troca.
+  previousCpf?: string;
+  // Lista de CPFs já cadastrados neste perfil+programa para validar duplicidade
+  existingCpfs?: string[];
 }
 
 const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
@@ -397,11 +477,14 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
   profileId,
   program,
   initialValue,
+  exchange = false,
+  previousCpf,
+  existingCpfs = [],
 }) => {
   // Estados para gerenciar os campos do formulário e erros
-  const [name, setName] = useState(initialValue?.name ?? "");
-  const [cpf, setCpf] = useState(initialValue?.cpf ?? "");
-  const [issueDate, setIssueDate] = useState(initialValue?.issueDate ?? "");
+  const [name, setName] = useState(exchange ? "" : initialValue?.name ?? "");
+  const [cpf, setCpf] = useState(exchange ? "" : initialValue?.cpf ?? "");
+  const [issueDate, setIssueDate] = useState(exchange ? "" : initialValue?.issueDate ?? "");
   const isEdit = !!initialValue;
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -414,6 +497,15 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
     }
     if (!validateCPF(cpf)) {
       newErrors.cpf = "CPF deve conter 11 dígitos";
+    }
+    // Em modo de troca (Azul), não permitir cadastrar o mesmo CPF que estava
+    // anteriormente cadastrado para o beneficiário alvo.
+    if (exchange && previousCpf) {
+      const cpfDigits = onlyDigits(cpf);
+      const prevDigits = onlyDigits(previousCpf);
+      if (cpfDigits === prevDigits) {
+        newErrors.cpf = 'Não é possível cadastrar o mesmo CPF do beneficiário anterior durante a troca';
+      }
     }
     if (!issueDate) {
       newErrors.issueDate = "Data é obrigatória";
@@ -431,16 +523,28 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
         if (input > today) {
           newErrors.issueDate = 'Data de cadastro não pode ser futura';
         }
-        // Regras específicas do Azul: só aplicar a restrição "não pode ser anterior" quando a alteração for uma substituição (CPF alterado)
-        if (program === 'azul' && isEdit) {
-          const originalCpf = initialValue?.cpf ?? '';
-          const cpfDigits = onlyDigits(cpf);
-          const cpfChanged = cpfDigits !== originalCpf;
-          if (cpfChanged && input < today) {
-            newErrors.issueDate = 'Data de cadastro não pode ser anterior à data atual para alterações (Azul)';
+        // Regras específicas de TROCA para Azul: quando estamos no modo de
+        // exchange (troca) e há um beneficiário original (initialValue), não
+        // é permitido informar uma data de emissão do novo beneficiário
+        // anterior à data de emissão do beneficiário atual.
+        if (exchange && isEdit && initialValue?.issueDate) {
+          const original = parseDateOnlyToLocal(initialValue.issueDate);
+          original.setHours(0, 0, 0, 0);
+          const inputDate = parseDateOnlyToLocal(issueDate);
+          inputDate.setHours(0, 0, 0, 0);
+          if (inputDate < original) {
+            newErrors.issueDate = 'Data de emissão do novo beneficiário não pode ser anterior à data do beneficiário atual';
           }
         }
       }
+    }
+
+    // Impede cadastrar CPF repetido no mesmo perfil/programa
+    const digits = onlyDigits(cpf);
+    const existsAlready = existingCpfs.some((c) => onlyDigits(c) === digits);
+    const isEditingSameCpf = isEdit && onlyDigits(initialValue?.cpf || "") === digits;
+    if (existsAlready && !isEditingSameCpf) {
+      newErrors.cpf = "CPF já cadastrado";
     }
 
     setErrors(newErrors);
@@ -492,7 +596,7 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
         {/* Cabeçalho do modal */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
-            Adicionar beneficiário
+            {exchange ? 'Trocar beneficiário' : 'Adicionar beneficiário'}
           </h2>
           <button
             onClick={onClose}

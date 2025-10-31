@@ -5,6 +5,7 @@ import { SignupForm } from "./components/auth/SignupForm";
 import { Dashboard } from "./components/dashboard/Dashboard";
 import { ProfileView } from "./components/dashboard/ProfileView";
 import { ProgramScreen } from "./components/programs/ProgramScreen";
+import { apiDelete } from "./api";
 
 /**
  * Hook customizado para gerenciar estado local com persistência no localStorage.
@@ -126,9 +127,18 @@ function App() {
   /**
    * Remove um perfil e todos os beneficiários associados.
    */
-  const handleDeleteProfile = (profileId: string) => {
-    setProfiles((prev) => prev.filter((p) => p.id !== profileId));
-    setBeneficiaries((prev) => prev.filter((b) => b.profileId !== profileId));
+  const handleDeleteProfile = async (profileId: string) => {
+    try {
+      // Remove no servidor primeiro
+      await apiDelete(`/profiles/${profileId}`, token);
+
+      // Só então atualiza o estado local
+      setProfiles((prev) => prev.filter((p) => p.id !== profileId));
+      setBeneficiaries((prev) => prev.filter((b) => b.profileId !== profileId));
+    } catch (err: any) {
+      console.error("Falha ao excluir perfil no servidor:", err);
+      alert(err?.body?.error ?? "Erro ao excluir perfil");
+    }
   };
 
   /**

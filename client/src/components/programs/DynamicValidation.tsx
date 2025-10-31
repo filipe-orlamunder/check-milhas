@@ -1,8 +1,10 @@
 // src/programs/DynamicValidation.tsx
 import React, { useState } from 'react';
+import { formatCPF } from '../../utils/formatters';
 import { Profile, Beneficiary } from '../../types';
 import { X, Filter, Calendar, AlertTriangle } from 'lucide-react';
 import { Button } from '../common/Button';
+import { computeStatus } from '../../utils/statusCalculator';
 
 // Definição das propriedades de entrada do componente
 interface DynamicValidationProps {
@@ -96,33 +98,62 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
       setError('Formato de data inválido. Use YYYY-MM-DD');
       return;
     }
+    // Bloqueia datas passadas: permitir apenas hoje ou futuro
+    if (filterDate < todayStr) {
+      setError('Selecione hoje ou uma data futura. Datas passadas não são permitidas.');
+      return;
+    }
     setAppliedDate(filterDate);
   };
 
   const selectedDate = parseDateOnlyToLocal(appliedDate);
 
-  /**
-   * Calcula o número de beneficiários disponíveis, subtraindo a contagem
-   * atual do limite máximo do programa (25 para Latam/Smiles, 5 para Azul).
-   */
-  const getAvailableBeneficiaries = (
+  // Limites por programa
+  const getProgramLimit = (program: 'latam' | 'smiles' | 'azul') => (program === 'azul' ? 5 : 25);
+
+  // Filtra beneficiários por perfil e programa
+  const getProfileProgramBeneficiaries = (profileId: string, program: 'latam' | 'smiles' | 'azul') =>
+    beneficiaries.filter((b) => b.profileId === profileId && b.program === program);
+
+  // Beneficiários que estarão "Liberado" na data informada (apenas Latam/Smiles)
+  const getReleasedAtDate = (
     profileId: string,
     program: 'latam' | 'smiles' | 'azul',
-    _date: Date // Parâmetro de data reservado para futuras regras de validação baseadas em tempo
-  ) => {
-    const profileBeneficiaries = beneficiaries.filter(
-      (b) => b.profileId === profileId && b.program === program
-    );
-
-    let limit = 0;
-    if (program === 'latam' || program === 'smiles') {
-      limit = 25;
-    } else if (program === 'azul') {
-      limit = 5;
-    }
-
-    return Math.max(0, limit - profileBeneficiaries.length);
+    dateRef: Date
+  ): Beneficiary[] => {
+    if (program === 'azul') return [];
+    return getProfileProgramBeneficiaries(profileId, program).filter((b) => {
+      const statusAtDate = computeStatus(program, b.issueDate, b.changeDate ?? null, dateRef);
+      return statusAtDate === 'Liberado';
+    });
   };
+
+  // Quantidade disponível na data: liberados (Latam/Smiles) + vagas até o limite. Azul: só vagas até o limite.
+  const getAvailableCountAtDate = (
+    profileId: string,
+    program: 'latam' | 'smiles' | 'azul',
+    dateRef: Date
+  ) => {
+    const limit = getProgramLimit(program);
+    const all = getProfileProgramBeneficiaries(profileId, program);
+    if (program === 'azul') {
+      // Na Azul, durante uma troca, os dois pendentes contam como 1
+      const pending = all.filter((b) => computeStatus('azul', b.issueDate, b.changeDate ?? null, dateRef) === 'Pendente' && !!b.changeDate);
+      const groupKeys = new Set(pending.map((b) => b.changeDate as string));
+      const pendingGroups = groupKeys.size;
+      const nonPendingCount = all.length - pending.length;
+      const effectiveRegistered = nonPendingCount + pendingGroups;
+      const remaining = Math.max(0, limit - effectiveRegistered);
+      return remaining; // Azul nunca libera
+    }
+    const registeredCount = all.length;
+    const remainingSlots = Math.max(0, limit - registeredCount);
+    const releasedCount = getReleasedAtDate(profileId, program, dateRef).length;
+    return releasedCount + remainingSlots;
+  };
+
+  const getReleasedListForUI = (profileId: string, program: 'latam' | 'smiles' | 'azul') =>
+    getReleasedAtDate(profileId, program, selectedDate);
 
   // Renderização do Modal
   return (
@@ -153,6 +184,7 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
                 onChange={(e) => setFilterDate(sanitizeDateInput(e.target.value))}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
                 pattern="\d{4}-\d{2}-\d{2}"
+                min={todayStr}
               />
             </div>
             {/* Botão para aplicar filtro */}
@@ -184,7 +216,7 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
             profiles.map((profile) => (
               <div key={profile.id} className="bg-gray-50 rounded-xl p-6 mb-6">
                 <h3 className="text-lg font-semibold">{profile.name}</h3>
-                <p className="text-sm text-gray-600 mb-4">CPF: {profile.cpf}</p>
+                <p className="text-sm text-gray-600 mb-4">CPF: {formatCPF(profile.cpf)}</p>
                 
                 {/* Visualização de Saldo por Programa */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -192,22 +224,67 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
                   <div className="bg-white border rounded-lg p-4">
                     <h4 className="font-medium">LATAM Pass</h4>
                       <p className="text-2xl text-red-600 font-bold">
-                        {getAvailableBeneficiaries(profile.id, 'latam', selectedDate)} <span className="text-base font-normal text-gray-700">beneficiários disponíveis</span>
+                        {getAvailableCountAtDate(profile.id, 'latam', selectedDate)} <span className="text-base font-normal text-gray-700">beneficiários disponíveis</span>
                       </p>
+                      {(() => {
+                        const list = getReleasedListForUI(profile.id, 'latam');
+                        return (
+                          <div className="mt-2 text-sm text-gray-700">
+                            {list.length > 0 ? (
+                              <div>
+                                <p className="font-medium mb-1">Liberados na data:</p>
+                                <ul className="list-disc pl-5 space-y-1">
+                                  {list.map((b) => (
+                                    <li key={b.id} className="break-words">
+                                      {b.name} — CPF {formatCPF(b.cpf)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : (
+                              <p className="text-gray-500">Nenhum beneficiário liberado nesta data.</p>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
                   {/* Smiles Saldo */}
                   <div className="bg-white border rounded-lg p-4">
                     <h4 className="font-medium">Smiles</h4>
                       <p className="text-2xl text-orange-600 font-bold">
-                        {getAvailableBeneficiaries(profile.id, 'smiles', selectedDate)} <span className="text-base font-normal text-gray-700">beneficiários disponíveis</span>
+                        {getAvailableCountAtDate(profile.id, 'smiles', selectedDate)} <span className="text-base font-normal text-gray-700">beneficiários disponíveis</span>
                       </p>
+                      {(() => {
+                        const list = getReleasedListForUI(profile.id, 'smiles');
+                        return (
+                          <div className="mt-2 text-sm text-gray-700">
+                            {list.length > 0 ? (
+                              <div>
+                                <p className="font-medium mb-1">Liberados na data:</p>
+                                <ul className="list-disc pl-5 space-y-1">
+                                  {list.map((b) => (
+                                    <li key={b.id} className="break-words">
+                                      {b.name} — CPF {formatCPF(b.cpf)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : (
+                              <p className="text-gray-500">Nenhum beneficiário liberado nesta data.</p>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
                   {/* Azul Fidelidade Saldo */}
                   <div className="bg-white border rounded-lg p-4">
                     <h4 className="font-medium">Azul Fidelidade</h4>
                       <p className="text-2xl text-blue-600 font-bold">
-                        {getAvailableBeneficiaries(profile.id, 'azul', selectedDate)} <span className="text-base font-normal text-gray-700">beneficiários disponíveis</span>
+                        {getAvailableCountAtDate(profile.id, 'azul', selectedDate)} <span className="text-base font-normal text-gray-700">beneficiários disponíveis</span>
                       </p>
+                      <div className="mt-2 text-sm text-gray-700">
+                        <p className="text-gray-500">Os beneficiários cadastrados não possuem data para liberações.</p>
+                      </div>
                   </div>
                 </div>
               </div>

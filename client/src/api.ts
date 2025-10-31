@@ -70,3 +70,24 @@ export async function apiGet(path: string, token?: string | null): Promise<any> 
 
   return data;
 }
+
+/**
+ * Executa uma requisição DELETE à API.
+ * @param path O endpoint da API (ex.: "/profiles/:id").
+ * @param token Token de autenticação opcional.
+ * @returns A resposta da API (quando houver corpo) ou um objeto vazio.
+ */
+export async function apiDelete(path: string, token?: string | null): Promise<any> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    headers: buildHeaders(token),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw { status: res.status, body: data };
+  }
+
+  return data;
+}

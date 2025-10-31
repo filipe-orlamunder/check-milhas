@@ -38,14 +38,12 @@ model User {
 model Profile {
   id            String        @id @default(uuid())
   name          String
-  cpf           String
+  cpf           String       @unique
   userId        String
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   beneficiaries Beneficiary[] // Um perfil pode ter vários beneficiários
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-
-  @@unique([userId, cpf]) // Garante que um usuário não pode cadastrar o mesmo CPF duas vezes
 }
 
 // Modelo para os beneficiários de cada programa
@@ -64,4 +62,6 @@ model Beneficiary {
   changeDate   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@unique([profileId, program, cpf]) // Evita duplicidade de CPF por perfil e programa (independe do status)
 }

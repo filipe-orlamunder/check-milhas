@@ -4,7 +4,9 @@ import { Profile, User, Beneficiary } from '../../types';
 import { ProfileForm } from './ProfileForm';
 import { Users, Plus, LogOut, Trash2, CheckCircle } from 'lucide-react';
 import { DynamicValidation } from "../programs/DynamicValidation";
+import { formatCPF } from '../../utils/formatters';
 import { Button } from '../common/Button';
+import { computeStatus } from '../../utils/statusCalculator';
 
 // Definição das propriedades obrigatórias do Dashboard
 interface DashboardProps {
@@ -44,11 +46,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
    */
   const getProfileStats = (profileId: string) => {
     const profileBeneficiaries = beneficiaries.filter((b) => b.profileId === profileId);
-    return {
-      latam: profileBeneficiaries.filter((b) => b.program === 'latam').length,
-      smiles: profileBeneficiaries.filter((b) => b.program === 'smiles').length,
-      azul: profileBeneficiaries.filter((b) => b.program === 'azul').length,
-    };
+
+    const latam = profileBeneficiaries.filter((b) => b.program === 'latam').length;
+    const smiles = profileBeneficiaries.filter((b) => b.program === 'smiles').length;
+
+    // Azul: durante trocas, dois pendentes contam como 1 (agrupar por changeDate)
+    const azulAll = profileBeneficiaries.filter((b) => b.program === 'azul');
+    const now = new Date();
+    const azulPending = azulAll.filter((b) => computeStatus('azul', b.issueDate, (b as any).changeDate ?? null, now) === 'Pendente' && (b as any).changeDate);
+    const groupKeys = new Set<string>(azulPending.map((b: any) => b.changeDate as string));
+    const pendingGroups = groupKeys.size;
+    const nonPendingCount = azulAll.length - azulPending.length;
+    const azul = nonPendingCount + pendingGroups;
+
+    return { latam, smiles, azul };
   };
 
   /**
@@ -150,7 +161,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1">
                             <h3 className="text-lg font-semibold text-gray-900 mb-1">{profile.name}</h3>
-                            <p className="text-lg font-semibold text-gray-900">CPF: {profile.cpf}</p>
+                            <p className="text-lg font-semibold text-gray-900">CPF: {formatCPF(profile.cpf)}</p>
                           </div>
                           {/* Botão para iniciar a confirmação de exclusão */}
                           <button

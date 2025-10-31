@@ -4,6 +4,7 @@ import { Profile } from "../../types";
 import { X, Save } from "lucide-react";
 import { apiPost } from "../../api";
 import { Button } from "../common/Button";
+import { onlyDigits, formatCPF } from "../../utils/formatters";
 
 // Definição das propriedades do componente
 interface ProfileFormProps {
@@ -15,10 +16,6 @@ interface ProfileFormProps {
 
 // --- Funções de Utilitário e Validação ---
 
-/**
- * Remove todos os caracteres não numéricos de uma string.
- */
-const onlyDigits = (s: string) => s.replace(/\D/g, "");
 
 /**
  * Valida o comprimento do nome.
@@ -33,14 +30,6 @@ const validateName = (name: string) => {
  */
 const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf));
 
-/**
- * Formata o CPF no padrão XXX.XXX.XXX-XX.
- */
-const formatCPF = (cpf: string) => {
-  const d = onlyDigits(cpf);
-  if (d.length !== 11) return cpf;
-  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
-};
 
 // --- Componente ProfileForm ---
 

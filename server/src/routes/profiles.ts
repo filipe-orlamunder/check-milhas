@@ -55,17 +55,13 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
     const { name, cpf } = createProfileSchema.parse(req.body);
 
     // 2. Verifica se o CPF já está cadastrado para este usuário
-    const existingProfile = await prisma.profile.findUnique({
-      where: {
-        userId_cpf: {
-          userId,
-          cpf,
-        },
-      },
+    // Verifica duplicidade por CPF (único globalmente)
+    const existingProfile = await prisma.profile.findFirst({
+      where: { cpf },
     });
 
     if (existingProfile) {
-      return res.status(400).json({ error: "CPF já cadastrado para este usuário." });
+      return res.status(409).json({ error: "CPF já cadastrado" });
     }
 
     // 3. Cria o novo perfil
@@ -89,6 +85,10 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
     // Tratamento para o erro de chave estrangeira que você teve originalmente
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
       return res.status(401).json({ error: "Usuário do token inválido. Por favor, autentique-se novamente." });
+    }
+    // Violação de unicidade (ex.: CPF único)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return res.status(409).json({ error: "CPF já cadastrado" });
     }
     
     return res.status(500).json({ error: "Erro interno ao criar o perfil." });

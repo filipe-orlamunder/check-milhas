@@ -149,8 +149,8 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
 
     if (!isCpfValid(cpf)) return res.status(400).json({ error: "CPF inválido (11 dígitos)" });
 
-    const exists = await prisma.beneficiary.findFirst({ where: { profileId, program: prog, cpf } });
-    if (exists) return res.status(400).json({ error: "CPF já cadastrado nesse programa para este perfil" });
+  const exists = await prisma.beneficiary.findFirst({ where: { profileId, program: prog, cpf } });
+  if (exists) return res.status(409).json({ error: "CPF já cadastrado" });
 
   const issue = parseDateOnlyToLocal(issueDate as any);
   const status = computeStatus(prog, issue, null, new Date());
@@ -169,6 +169,10 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
     return res.status(201).json(created);
   } catch (err: any) {
     if (err.status) return res.status(err.status).json({ error: err.message });
+    // conflito de unicidade no banco
+    if (err?.code === 'P2002') {
+      return res.status(409).json({ error: "CPF já cadastrado" });
+    }
     console.error(err);
     return res.status(500).json({ error: "Erro interno" });
   }
@@ -194,7 +198,7 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
     if (!profile) return res.status(404).json({ error: "Perfil não encontrado" });
     if (profile.userId !== userId) return res.status(403).json({ error: "Acesso negado" });
 
-    if (existing.program === "AZUL") {
+  if (existing.program === "AZUL") {
       // validar formato de issueDate se fornecida
       if (issueDate && typeof issueDate === 'string' && !DATE_RE.test(issueDate)) {
         return res.status(400).json({ error: "Formato de data inválido. Use YYYY-MM-DD" });
@@ -204,7 +208,22 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
       if (!changed) return res.status(400).json({ error: "Nenhuma alteração detectada" });
       if (cpf && !isCpfValid(cpf)) return res.status(400).json({ error: "CPF inválido" });
       const dup = cpf ? await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: existing.program, cpf, NOT: { id } } }) : null;
-      if (dup) return res.status(400).json({ error: "CPF já cadastrado nesse programa" });
+      if (dup) return res.status(409).json({ error: "CPF já cadastrado" });
+
+      // Se o CPF não mudou, trate como atualização simples (não cria par pendente)
+      if (!cpf || cpf === existing.cpf) {
+        const newIssueDate = issueDate ? parseDateOnlyToLocal(issueDate as any) : existing.issueDate;
+        const newStatus = computeStatus(existing.program, newIssueDate, existing.changeDate ?? null, new Date());
+        const updated = await prisma.beneficiary.update({
+          where: { id },
+          data: {
+            name: name ?? existing.name,
+            issueDate: newIssueDate,
+            status: newStatus
+          }
+        });
+        return res.json(updated);
+      }
 
       // Regra: alteração AZUL -> cria novo registro (novo beneficiário) e marca ambos PENDENTE com changeDate
       const now = new Date();
@@ -244,7 +263,7 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
     if (cpf && !isCpfValid(cpf)) return res.status(400).json({ error: "CPF inválido" });
     if (cpf && cpf !== existing.cpf) {
       const dup = await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: existing.program, cpf } });
-      if (dup) return res.status(400).json({ error: "CPF já cadastrado nesse programa" });
+      if (dup) return res.status(409).json({ error: "CPF já cadastrado" });
     }
 
   // validar formato de issueDate se fornecida (PUT geral)
@@ -266,7 +285,10 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
     });
 
     return res.json(updated);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      return res.status(409).json({ error: "CPF já cadastrado" });
+    }
     console.error(err);
     return res.status(500).json({ error: "Erro interno" });
   }
