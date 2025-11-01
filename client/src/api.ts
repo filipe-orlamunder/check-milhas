@@ -21,16 +21,13 @@ function buildHeaders(token?: string | null): Headers {
 
 /**
  * Executa uma requisição POST à API.
- * @param path O endpoint da API.
- * @param body O corpo da requisição (payload).
- * @param token Token de autenticação opcional.
- * @returns A resposta da API.
+ * Tipado genericamente para facilitar o consumo.
  */
-export async function apiPost(
+export async function apiPost<TResponse = any, TBody = any>(
   path: string,
-  body: any,
+  body: TBody,
   token?: string | null
-): Promise<any> {
+): Promise<TResponse> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: buildHeaders(token),
@@ -45,7 +42,7 @@ export async function apiPost(
     throw { status: res.status, body: data };
   }
 
-  return data;
+  return data as TResponse;
 }
 
 /**
@@ -54,7 +51,7 @@ export async function apiPost(
  * @param token Token de autenticação opcional.
  * @returns A resposta da API.
  */
-export async function apiGet(path: string, token?: string | null): Promise<any> {
+export async function apiGet<TResponse = any>(path: string, token?: string | null): Promise<TResponse> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "GET",
     headers: buildHeaders(token),
@@ -68,7 +65,7 @@ export async function apiGet(path: string, token?: string | null): Promise<any> 
     throw { status: res.status, body: data };
   }
 
-  return data;
+  return data as TResponse;
 }
 
 /**
@@ -77,7 +74,7 @@ export async function apiGet(path: string, token?: string | null): Promise<any> 
  * @param token Token de autenticação opcional.
  * @returns A resposta da API (quando houver corpo) ou um objeto vazio.
  */
-export async function apiDelete(path: string, token?: string | null): Promise<any> {
+export async function apiDelete<TResponse = any>(path: string, token?: string | null): Promise<TResponse> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
     headers: buildHeaders(token),
@@ -89,5 +86,27 @@ export async function apiDelete(path: string, token?: string | null): Promise<an
     throw { status: res.status, body: data };
   }
 
-  return data;
+  return data as TResponse;
+}
+
+/**
+ * Executa uma requisição PUT à API.
+ * Mantém as mesmas convenções de erro e headers dos demais métodos.
+ */
+export async function apiPut<TResponse = any, TBody = any>(
+  path: string,
+  body: TBody,
+  token?: string | null
+): Promise<TResponse> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: buildHeaders(token),
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw { status: res.status, body: data };
+  }
+  return data as TResponse;
 }

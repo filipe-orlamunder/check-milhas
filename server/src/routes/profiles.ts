@@ -3,19 +3,19 @@
 import { Router } from "express";
 import { z, ZodError } from "zod";
 import { prisma } from "../prisma";
-import { authMiddleware, AuthRequest } from "../middleware/authMiddleware"; // Importe a interface
+import { authMiddleware, AuthRequest } from "../middleware/authMiddleware";
 import { Prisma } from "@prisma/client";
 
 const profilesRouter = Router();
 
-// Zod schema for profile creation
+// Validação do payload de perfil
 const createProfileSchema = z.object({
   name: z.string().min(1, "O nome do perfil é obrigatório."),
   cpf: z.string().length(11, "O CPF deve ter 11 dígitos."),
 });
 
-// GET /profiles - Listar perfis do usuário autenticado
-profilesRouter.get("/profiles", authMiddleware, async (req: AuthRequest, res) => { // Use a interface AuthRequest
+// GET /profiles — lista os perfis do usuário autenticado
+profilesRouter.get("/profiles", authMiddleware, async (req: AuthRequest, res) => {
   const userId = req.user?.id;
 
   if (!userId) {
@@ -33,8 +33,8 @@ profilesRouter.get("/profiles", authMiddleware, async (req: AuthRequest, res) =>
   }
 });
 
-// POST /profiles - Criar novo perfil
-profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) => { // Use a interface AuthRequest
+// POST /profiles — cria perfil
+profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) => {
   const userId = req.user?.id;
 
   if (!userId) {
@@ -42,7 +42,7 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
   }
 
   try {
-    // 0. 🔹 Verifica se o usuário do token realmente existe
+    // Verifica se o usuário do token existe
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -51,10 +51,9 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
       return res.status(401).json({ error: "Usuário do token não encontrado. Por favor, autentique-se novamente." });
     }
 
-    // 1. Valida o corpo da requisição
+  // Valida corpo
     const { name, cpf } = createProfileSchema.parse(req.body);
 
-    // 2. Verifica se o CPF já está cadastrado para este usuário
     // Verifica duplicidade por CPF (único globalmente)
     const existingProfile = await prisma.profile.findFirst({
       where: { cpf },
@@ -64,7 +63,7 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
       return res.status(409).json({ error: "CPF já cadastrado" });
     }
 
-    // 3. Cria o novo perfil
+    // Cria perfil
     const created = await prisma.profile.create({
       data: {
         name,
@@ -76,17 +75,16 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
     res.status(201).json(created);
   } catch (error) {
     if (error instanceof ZodError) {
-      // ✅ CORREÇÃO APLICADA AQUI
       return res.status(400).json({ errors: error.flatten().fieldErrors });
     }
     
     console.error("Erro ao criar perfil:", error);
 
-    // Tratamento para o erro de chave estrangeira que você teve originalmente
+    // Chave estrangeira inválida
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
       return res.status(401).json({ error: "Usuário do token inválido. Por favor, autentique-se novamente." });
     }
-    // Violação de unicidade (ex.: CPF único)
+    // Violação de unicidade (CPF)
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return res.status(409).json({ error: "CPF já cadastrado" });
     }
@@ -95,8 +93,8 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
   }
 });
 
-// DELETE /profiles/:id - Excluir perfil por ID
-profilesRouter.delete("/profiles/:id", authMiddleware, async (req: AuthRequest, res) => { // Use a interface AuthRequest
+// DELETE /profiles/:id — exclui perfil por ID
+profilesRouter.delete("/profiles/:id", authMiddleware, async (req: AuthRequest, res) => {
   const userId = req.user?.id;
   const { id } = req.params;
 

@@ -8,7 +8,7 @@ import { formatCPF } from '../../utils/formatters';
 import { Button } from '../common/Button';
 import { computeStatus } from '../../utils/statusCalculator';
 
-// Definição das propriedades obrigatórias do Dashboard
+// Propriedades do Dashboard
 interface DashboardProps {
   user: User;
   profiles: Profile[];
@@ -19,7 +19,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-// Componente principal do painel de controle do usuário
+// Painel principal
 export const Dashboard: React.FC<DashboardProps> = ({
   user,
   profiles,
@@ -29,28 +29,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectProfile,
   onLogout,
 }) => {
-  // Estados para gerenciamento de modais e formulários
+  // Estado local
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
-  // Filtra perfis pertencentes ao usuário logado
+  // Perfis do usuário logado
   const userProfiles = profiles.filter((p) => p.userId === user.id);
-  // Limita a criação de perfis a 10
+  // Limite de 10 perfis
   const canAddProfile = userProfiles.length < 10;
 
-  /**
-   * Calcula a contagem de beneficiários de um perfil por programa.
-   * @param profileId O ID do perfil.
-   * @returns Estatísticas de beneficiários.
-   */
+  // Estatísticas por programa para um perfil
   const getProfileStats = (profileId: string) => {
     const profileBeneficiaries = beneficiaries.filter((b) => b.profileId === profileId);
 
     const latam = profileBeneficiaries.filter((b) => b.program === 'latam').length;
     const smiles = profileBeneficiaries.filter((b) => b.program === 'smiles').length;
 
-    // Azul: durante trocas, dois pendentes contam como 1 (agrupar por changeDate)
+    // Azul: pares pendentes contam como 1 (agrupa por changeDate)
     const azulAll = profileBeneficiaries.filter((b) => b.program === 'azul');
     const now = new Date();
   const azulPending = azulAll.filter((b) => computeStatus('azul', b.issueDate, b.changeDate ?? null, now) === 'Pendente' && b.changeDate);
@@ -62,10 +58,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return { latam, smiles, azul };
   };
 
-  /**
-   * Executa a exclusão de um perfil após a confirmação.
-   * @param profileId O ID do perfil a ser excluído.
-   */
+  // Exclusão confirmada de perfil
   const handleDeleteProfile = (profileId: string) => {
     onDeleteProfile(profileId);
     setDeleteConfirm(null);
@@ -74,11 +67,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Renderização da interface do painel
   return (
     <>
-      {/* Container principal e layout */}
+      {/* Layout */}
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <div className="bg-white shadow-sm border-b">
           <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            {/* Informações do usuário e título */}
+            {/* Cabeçalho */}
             <div className="flex items-center space-x-3">
               <div className="bg-blue-600 w-10 h-10 rounded-lg flex items-center justify-center">
                 <Users className="w-6 h-6 text-white" />
@@ -89,7 +82,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            {/* Botão de Logout */}
+            {/* Logout */}
             <button
               onClick={onLogout}
               className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
@@ -100,7 +93,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Conteúdo principal: Gerenciamento de Perfis */}
+        {/* Conteúdo principal */}
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 space-y-4 lg:space-y-0">
             <div>
@@ -108,9 +101,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <p className="text-gray-600">{userProfiles.length} de 10 perfis cadastrados</p>
             </div>
 
-            {/* Ações: Validação e Adicionar Perfil */}
+            {/* Ações */}
             <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full lg:w-auto">
-              {/* Botão para abrir a Validação Dinâmica */}
+              {/* Validação Dinâmica */}
               <Button
                 onClick={() => setShowValidation(true)}
                 className="flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -119,7 +112,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span>Validação Dinâmica</span>
               </Button>
 
-              {/* Botão para abrir o formulário de Adicionar Perfil */}
+              {/* Adicionar Perfil */}
               <Button
                 onClick={() => setShowProfileForm(true)}
                 disabled={!canAddProfile}
@@ -136,10 +129,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* Exibição condicional: Lista de Perfis ou Mensagem de Vazio */}
+          {/* Perfis */}
           {userProfiles.length === 0 ?
             (
-              // Mensagem de "Nenhum perfil cadastrado"
+              // Vazio
               <div className="text-center py-16">
                 <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Users className="w-10 h-10 text-gray-400" />
@@ -148,7 +141,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <p className="text-gray-600 mb-6">Comece adicionando seu primeiro perfil</p>
               </div>
             ) : (
-              // Grade de cartões de perfis
+              // Grade de perfis
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {userProfiles.map((profile) => {
                   const stats = getProfileStats(profile.id);
@@ -163,7 +156,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <h3 className="text-lg font-semibold text-gray-900 mb-1">{profile.name}</h3>
                             <p className="text-lg font-semibold text-gray-900">CPF: {formatCPF(profile.cpf)}</p>
                           </div>
-                          {/* Botão para iniciar a confirmação de exclusão */}
+                          {/* Excluir */}
                           <button
                             onClick={() => setDeleteConfirm(profile.id)}
                             title="Excluir perfil"
@@ -173,7 +166,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </button>
                         </div>
 
-                        {/* Detalhes de beneficiários por programa */}
+                        {/* Resumo por programa */}
                         <div className="space-y-3 mb-6">
                           <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">LATAM Pass</span>
@@ -189,7 +182,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </div>
 
-                        {/* Botão de navegação para a tela do perfil */}
+                        {/* Acessar perfil */}
                         <button
                           onClick={() => onSelectProfile(profile)}
                           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -205,7 +198,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Formulário modal para criação de perfil */}
+      {/* Modal: novo perfil */}
       {showProfileForm && (
         <ProfileForm
           onSubmit={(profile) => { onAddProfile(profile); setShowProfileForm(false); }}
@@ -215,7 +208,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Modal de confirmação para exclusão de perfil */}
+      {/* Modal: confirmação de exclusão */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
@@ -229,7 +222,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* Modal para Validação Dinâmica de beneficiários */}
+      {/* Modal: Validação Dinâmica */}
       {showValidation && (
         <DynamicValidation profiles={userProfiles} beneficiaries={beneficiaries} onClose={() => setShowValidation(false)} />
       )}

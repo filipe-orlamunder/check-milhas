@@ -2,126 +2,31 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { computeStatus } from "../utils/statusCalculator";
-import parseDateOnlyToLocal from "../utils/dateUtils";
+import parseDateOnlyToLocal, { DATE_RE } from "../utils/dateUtils";
 import { isCpfValid } from "../utils/validators";
-import { authMiddleware, AuthRequest } from "../middleware/authMiddleware"; // 1. Importe a interface AuthRequest
+import { authMiddleware, AuthRequest } from "../middleware/authMiddleware";
 import { Program, Status } from "@prisma/client";
+import { ensureProfileBelongsToUser, reconcileAzulPending } from "../services/beneficiariesService";
 
 const router = Router();
 
-// Validação de formato YYYY-MM-DD 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Validação de formato YYYY-MM-DD reutilizada de utils/dateUtils
 
-/**
- * Helpers
- */
-async function ensureProfileBelongsToUser(profileId: string, userId: string) {
-  const profile = await prisma.profile.findUnique({ where: { id: profileId } });
-  if (!profile) throw { status: 404, message: "Perfil não encontrado" };
-  if (profile.userId !== userId) throw { status: 403, message: "Acesso negado" };
-  return profile;
-}
 
-/**
- * GET /profiles/:profileId/beneficiaries?program=LATAM
- */
-router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => { // 2. Use a interface
+// GET /profiles/:profileId/beneficiaries?program=LATAM
+router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { profileId } = req.params;
     const programQ = (req.query.program as string | undefined)?.toUpperCase();
-    const userId = req.user?.id; // 3. Corrija o acesso ao ID do usuário
+    const userId = req.user?.id;
 
-    if (!userId) { // 4. Adicione uma verificação de segurança
+    if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado." });
     }
 
     await ensureProfileBelongsToUser(profileId, userId);
 
-    // Reconciliar alterações pendentes do AZUL, aplicando as regras de conclusão automática
-    const reconcileAzulPending = async (profileIdToCheck?: string) => {
-      const dayMs = 24 * 60 * 60 * 1000;
-      const pendingLimitDays = 30;
-      const fallbackRemovalDays = 60;
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const baseFilter = {
-        program: 'AZUL',
-        status: 'PENDENTE',
-        ...(profileIdToCheck ? { profileId: profileIdToCheck } : {}),
-      } as const;
-
-      const pendingNew = await prisma.beneficiary.findMany({
-        where: {
-          ...baseFilter,
-          NOT: { previousCpf: null },
-        },
-      });
-
-      for (const pending of pendingNew) {
-        try {
-          const baseDate = new Date(pending.issueDate);
-          baseDate.setHours(0, 0, 0, 0);
-          const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
-          if (diffDays < pendingLimitDays) {
-            continue;
-          }
-
-          if (pending.previousCpf && pending.changeDate) {
-            const previous = await prisma.beneficiary.findFirst({
-              where: {
-                profileId: pending.profileId,
-                program: 'AZUL',
-                cpf: pending.previousCpf,
-                changeDate: pending.changeDate,
-              },
-            });
-
-            if (previous) {
-              await prisma.beneficiary.delete({ where: { id: previous.id } });
-            }
-          }
-
-          await prisma.beneficiary.update({
-            where: { id: pending.id },
-            data: {
-              status: Status.UTILIZADO,
-              changeDate: null,
-              previousName: null,
-              previousCpf: null,
-              previousDate: null,
-            },
-          });
-        } catch (err) {
-          console.error('Erro finalizando troca AZUL', err);
-        }
-      }
-
-      const orphanOld = await prisma.beneficiary.findMany({
-        where: {
-          ...baseFilter,
-          previousCpf: null,
-          previousName: null,
-        },
-      });
-
-      for (const old of orphanOld) {
-        try {
-          if (!old.changeDate) continue;
-          const baseDate = new Date(old.changeDate);
-          baseDate.setHours(0, 0, 0, 0);
-          const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
-          if (diffDays >= fallbackRemovalDays) {
-            await prisma.beneficiary.delete({ where: { id: old.id } });
-          }
-        } catch (err) {
-          console.error('Erro removendo beneficiário AZUL órfão', err);
-        }
-      }
-    };
-
-    // Executa reconciliação apenas para este perfil (sempre seguro)
+    // Executa reconciliação apenas para este perfil (mantém comportamento)
     await reconcileAzulPending(profileId);
 
     const where: any = { profileId };
@@ -129,10 +34,10 @@ router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Aut
 
     const list = await prisma.beneficiary.findMany({ where, orderBy: { createdAt: "desc" } });
 
-    // Recalcula o status para cada registro antes de enviar (para aplicar regras de tempo)
+    // Recalcula o status com base na data atual
     const now = new Date();
     const mapped = list.map((b) => {
-      const isNewForAzul = !!b.previousName; // novo registro em substituição traz previous*
+      const isNewForAzul = !!b.previousName;
       const status = computeStatus(b.program as Program, b.issueDate, b.changeDate ?? null, now, isNewForAzul as any);
       return { ...b, status };
     });
@@ -145,14 +50,12 @@ router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Aut
   }
 });
 
-/**
- * POST /profiles/:profileId/beneficiaries
- */
+// POST /profiles/:profileId/beneficiaries
 router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { profileId } = req.params;
     const { program, name, cpf, issueDate } = req.body;
-    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado." });
@@ -162,12 +65,12 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
 
   if (!program || !name || !cpf || !issueDate) return res.status(400).json({ error: "Campos obrigatórios faltando" });
 
-  // Validar formato da data (YYYY-MM-DD) para evitar anos com mais de 4 dígitos
+  // Valida data no formato YYYY-MM-DD
   if (typeof issueDate === 'string' && !DATE_RE.test(issueDate)) {
     return res.status(400).json({ error: "Formato de data inválido. Use YYYY-MM-DD" });
   }
 
-  // Não permitir datas futuras (parseando YYYY-MM-DD como local)
+  // Impede datas futuras
   const providedDate = parseDateOnlyToLocal(issueDate as any);
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -177,19 +80,19 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
 
     const prog = (program as string).toUpperCase() as Program;
 
-    // Limites por programa (validação depende do período de emissão)
+    // Limites por programa
     if (prog === "AZUL") {
       const limit = 5;
       const count = await prisma.beneficiary.count({ where: { profileId, program: prog } });
       if (count >= limit) return res.status(400).json({ error: `Limite de ${limit} atingido para ${prog}` });
     } else if (prog === "LATAM") {
-      // Contagem em janela móvel de 12 meses a partir da issueDate fornecida
+      // Janela móvel de 12 meses a partir da issueDate
   const issue = parseDateOnlyToLocal(issueDate as any);
       const windowStart = new Date(issue.getTime() - 365 * 24 * 60 * 60 * 1000);
       const count = await prisma.beneficiary.count({ where: { profileId, program: prog, issueDate: { gte: windowStart, lte: issue } } });
       if (count >= 25) return res.status(400).json({ error: `Limite de 25 atingido para ${prog} no período de 12 meses` });
     } else if (prog === "SMILES") {
-      // Contagem no ano civil da issueDate fornecida
+      // Ano civil da issueDate
   const issue = parseDateOnlyToLocal(issueDate as any);
       const yearStart = new Date(issue.getFullYear(), 0, 1);
       const yearEnd = new Date(issue.getFullYear(), 11, 31, 23, 59, 59);
@@ -219,7 +122,7 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
     return res.status(201).json(created);
   } catch (err: any) {
     if (err.status) return res.status(err.status).json({ error: err.message });
-    // conflito de unicidade no banco
+    // Conflito de unicidade (Prisma)
     if (err?.code === 'P2002') {
       return res.status(409).json({ error: "CPF já cadastrado" });
     }
@@ -228,9 +131,7 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
   }
 });
 
-/**
- * PUT /beneficiaries/:id
- */
+// PUT /beneficiaries/:id
 router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -260,7 +161,7 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
       const dup = cpf ? await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: existing.program, cpf, NOT: { id } } }) : null;
       if (dup) return res.status(409).json({ error: "CPF já cadastrado" });
 
-      // Se o CPF não mudou, trate como atualização simples (não cria par pendente)
+      // Sem troca de CPF: atualização simples
       if (!cpf || cpf === existing.cpf) {
         const newIssueDate = issueDate ? parseDateOnlyToLocal(issueDate as any) : existing.issueDate;
         const newStatus = computeStatus(existing.program, newIssueDate, existing.changeDate ?? null, new Date());
@@ -275,21 +176,21 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
         return res.json(updated);
       }
 
-      // Regra: alteração AZUL -> cria novo registro (novo beneficiário) e marca ambos PENDENTE com changeDate
+      // Troca AZUL: cria novo registro e marca ambos como PENDENTE
       const now = new Date();
   const newIssueDate = issueDate ? parseDateOnlyToLocal(issueDate as any) : now;
 
-        // Não permitir data de cadastro futura/ anterior à data atual
+        // Impede data futura
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const newDateOnly = new Date(newIssueDate);
         newDateOnly.setHours(0, 0, 0, 0);
   if (newDateOnly > today) return res.status(400).json({ error: "A data de cadastro não pode ser futura" });
 
-      // Atualiza o registro antigo para PENDENTE
+      // Marca registro antigo como PENDENTE
       await prisma.beneficiary.update({ where: { id }, data: { changeDate: now, status: Status.PENDENTE } });
 
-      // Cria o novo registro com previous* apontando para o antigo
+      // Novo registro aponta para o anterior via previous*
       const createdNew = await prisma.beneficiary.create({
         data: {
           profileId: existing.profileId,
@@ -360,13 +261,11 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
   }
 });
 
-/**
- * DELETE /beneficiaries/:id
- */
+// DELETE /beneficiaries/:id
 router.delete("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado." });
@@ -387,14 +286,12 @@ router.delete("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res
   }
 });
 
-/**
- * DELETE /profiles/:profileId/beneficiaries?program=LATAM (excluir todos do programa)
- */
+// DELETE /profiles/:profileId/beneficiaries?program=LATAM (limpa por programa)
 router.delete("/profiles/:profileId/beneficiaries", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { profileId } = req.params;
     const programQ = (req.query.program as string | undefined)?.toUpperCase();
-    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado." });
@@ -413,13 +310,11 @@ router.delete("/profiles/:profileId/beneficiaries", authMiddleware, async (req: 
   }
 });
 
-/**
- * POST /beneficiaries/:id/cancel-change  (AZUL)
- */
+// POST /beneficiaries/:id/cancel-change (AZUL)
 router.post("/beneficiaries/:id/cancel-change", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id; // ✅ CORREÇÃO APLICADA
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: "Usuário não autenticado." });
@@ -436,9 +331,9 @@ router.post("/beneficiaries/:id/cancel-change", authMiddleware, async (req: Auth
       return res.status(400).json({ error: "Apenas alterações pendentes do Azul podem ser canceladas" });
     }
 
-    // Se este registro representa o novo (tem previous*), então delete-o e reverta o antigo
+    // Se for o novo (tem previous*): apaga-o e reverte o antigo
     if (existing.previousName) {
-      // Este registro é o novo (tem previous*). previousCpf e changeDate devem existir neste fluxo.
+      // previousCpf e changeDate devem existir neste fluxo
       const prevCpf = existing.previousCpf as string;
       const prevChange = existing.changeDate as Date;
       const old = await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: "AZUL", cpf: prevCpf, changeDate: prevChange } });
@@ -449,7 +344,7 @@ router.post("/beneficiaries/:id/cancel-change", authMiddleware, async (req: Auth
       return res.json({ ok: true });
     }
 
-    // Caso este seja o registro antigo (sem previous*), encontre o novo e delete-o, revertendo o antigo
+    // Se for o antigo (sem previous*): remove o par novo e reverte o antigo
     const pairedNew = await prisma.beneficiary.findFirst({ where: { profileId: existing.profileId, program: "AZUL", previousCpf: existing.cpf, changeDate: existing.changeDate } });
     if (pairedNew) {
       await prisma.beneficiary.delete({ where: { id: pairedNew.id } });

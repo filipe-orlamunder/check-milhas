@@ -1,4 +1,9 @@
 // src/utils/dateUtils.ts
+// Utilitários concisos para manipulação de datas em formato de dia.
+
+// Valida strings no formato YYYY-MM-DD
+export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 // Pequeno util para parsear strings no formato YYYY-MM-DD como data local 
 export function parseDateOnlyToLocal(input: string | Date | undefined): Date {
   if (!input) return new Date();

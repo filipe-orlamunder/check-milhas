@@ -7,15 +7,16 @@ import authRouter from "./routes/auth";
 import profilesRouter from "./routes/profiles";
 import beneficiariesRouter from "./routes/beneficiaries";
 import validationRouter from "./routes/validation";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
-// Configuração de middlewares
+// Middlewares
 app.use(cors());
 app.use(express.json());
 
 const port = process.env.PORT || 3000;
 
-// Definição da Especificação OpenAPI (Swagger)
+// OpenAPI (Swagger)
 const swaggerSpec = {
   openapi: "3.0.0",
   info: {
@@ -343,17 +344,19 @@ const swaggerSpec = {
   }
 };
 
-// Configura o middleware do Swagger UI
+// Swagger UI
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Configuração das rotas
+// Rotas
 app.use("/auth", authRouter);
 app.use("/", profilesRouter);
 app.use("/", beneficiariesRouter);
 app.use("/", validationRouter);
 
-// Inicialização do servidor
+// Erros (global)
+app.use(errorHandler);
+
 app.listen(port, () => {
-  console.log(`🚀 Server rodando em http://localhost:${port}`);
-  console.log(`📘 Swagger disponível em http://localhost:${port}/api-docs`);
+  console.log(`Server rodando em http://localhost:${port}`);
+  console.log(`Swagger em http://localhost:${port}/api-docs`);
 });
