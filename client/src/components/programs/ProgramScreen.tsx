@@ -42,6 +42,18 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const AZUL_PENDING_LIMIT_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+type PendingGroupDisplay = {
+  kind: "pending-group";
+  key: string;
+  changeDate?: string;
+  newBeneficiary?: Beneficiary;
+  oldBeneficiary?: Beneficiary;
+};
+
+type DisplayItem =
+  | { kind: "single"; beneficiary: Beneficiary }
+  | PendingGroupDisplay;
+
 // sanitize input: limita ano a 4 dígitos e remove caracteres inválidos
 const sanitizeDateInput = (v: string) => {
   if (!v) return v;
@@ -114,6 +126,203 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
     maxBeneficiaries = 5;
   }
   const canAddBeneficiary = currentCount < maxBeneficiaries;
+
+  let displayItems: DisplayItem[] = [];
+
+  if (program === 'azul') {
+    const pendingGroups = new Map<string, PendingGroupDisplay>();
+    const groupOrder: string[] = [];
+    const singles: DisplayItem[] = [];
+
+    for (const ben of programBeneficiaries) {
+      if (ben.status === 'Pendente' && ben.changeDate) {
+        const key = `${ben.profileId}-${ben.changeDate}`;
+        let group = pendingGroups.get(key);
+        if (!group) {
+          group = { kind: 'pending-group', key, changeDate: ben.changeDate };
+          pendingGroups.set(key, group);
+          groupOrder.push(key);
+        }
+
+        if (ben.previousCpf) {
+          group.newBeneficiary = ben;
+        } else {
+          group.oldBeneficiary = ben;
+        }
+      } else {
+        singles.push({ kind: 'single', beneficiary: ben });
+      }
+    }
+
+    displayItems = [
+      ...singles,
+      ...groupOrder.map((key) => pendingGroups.get(key)!),
+    ];
+  } else {
+    displayItems = programBeneficiaries.map((ben) => ({ kind: 'single', beneficiary: ben }));
+  }
+
+  const renderBeneficiaryCard = (
+    b: Beneficiary,
+    options?: { highlight?: 'new' | 'old'; paired?: boolean }
+  ) => {
+    const highlight = options?.highlight;
+    let cardClass = "bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 p-6 h-full";
+    if (highlight === 'new') {
+      cardClass += ' border-2 border-blue-200 ring-2 ring-blue-100';
+    } else if (highlight === 'old') {
+      cardClass += ' border-2 border-slate-200 ring-2 ring-slate-100';
+    } else if (options?.paired) {
+      cardClass += ' border border-blue-100';
+    }
+
+    const badgeLabel = highlight === 'new'
+      ? 'Novo beneficiário'
+      : highlight === 'old'
+      ? 'Beneficiário anterior'
+      : null;
+
+    return (
+      <div className={cardClass}>
+        {badgeLabel && (
+          <span
+            className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold uppercase tracking-wide rounded-md mb-3 ${
+              highlight === 'new' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {badgeLabel}
+          </span>
+        )}
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">{b.name}</h3>
+            <p className="text-lg font-semibold text-gray-900">CPF: {formatCPF(b.cpf)}</p>
+          </div>
+          <div className="flex items-center space-x-2">
+            {/* Botão para edição individual */}
+            <button
+              onClick={() => {
+                const evt = new CustomEvent('openEditBeneficiary', { detail: { beneficiary: b } });
+                window.dispatchEvent(evt);
+              }}
+              disabled={b.status === 'Pendente'}
+              title={b.status === 'Pendente' ? 'Este beneficiário está em processo de alteração' : 'Editar beneficiário'}
+              className={`p-2 transition-colors rounded-lg ${
+                b.status === 'Pendente'
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              <Pencil className="w-5 h-5" />
+            </button>
+
+            {/* Botão específico do Azul para iniciar a troca */}
+            {program === 'azul' && (
+              <button
+                onClick={() => {
+                  setEditBeneficiary(b);
+                  setExchangeMode(true);
+                  setExchangePreviousCpf(b.cpf);
+                  setShowModal(true);
+                }}
+                disabled={b.status === 'Pendente'}
+                title={b.status === 'Pendente' ? 'Este beneficiário está em processo de alteração' : 'Trocar beneficiário'}
+                className={`p-2 transition-colors rounded-lg ${
+                  b.status === 'Pendente'
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                }`}
+              >
+                <Repeat className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Botão para exclusão individual */}
+            <button
+              onClick={() => setDeleteConfirm(b.id)}
+              disabled={program === 'azul' && b.status === 'Pendente'}
+              title={program === 'azul' && b.status === 'Pendente'
+                ? 'Não é possível excluir um beneficiário em processo de alteração'
+                : 'Excluir beneficiário'}
+              className={`p-2 transition-colors rounded-lg ${
+                program === 'azul' && b.status === 'Pendente'
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+              }`}
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        <p className="text-sm text-gray-600">Data de cadastro: {formatDate(b.issueDate)}</p>
+        <div className="mt-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm">
+              Status:{' '}
+              <span
+                className={`font-semibold ${
+                  b.status === 'Utilizado'
+                    ? 'text-red-600'
+                    : b.status === 'Pendente'
+                    ? 'text-yellow-600'
+                    : 'text-green-600'
+                }`}
+              >
+                {b.status}
+              </span>
+            </p>
+            {program === 'azul' && b.status === 'Pendente' && b.previousCpf && (() => {
+              const message = (() => {
+                const baseDate = parseDateOnlyToLocal(b.issueDate);
+                baseDate.setHours(0, 0, 0, 0);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const diffDays = Math.max(0, Math.floor((today.getTime() - baseDate.getTime()) / DAY_MS));
+                const daysLeft = Math.max(0, AZUL_PENDING_LIMIT_DAYS - diffDays);
+                if (daysLeft <= 0) return "";
+                return `Troca em andamento — faltam ${daysLeft} dias para completar os ${AZUL_PENDING_LIMIT_DAYS} dias iniciados em ${formatDate(b.issueDate)}`;
+              })();
+              return message ? (
+                <p className="text-xs text-gray-600 mt-1">{message}</p>
+              ) : null;
+            })()}
+            {options?.highlight === 'old' && b.status === 'Pendente' && (
+              <p className="text-xs text-gray-600 mt-1">
+                Será removido automaticamente quando a troca for concluída
+              </p>
+            )}
+          </div>
+
+          {b.status === 'Pendente' && b.previousCpf && (
+            <Button
+              onClick={() => {
+                const evt = new CustomEvent('cancelChangeBeneficiary', { detail: { id: b.id } });
+                window.dispatchEvent(evt);
+              }}
+              variant="secondary"
+              className="text-xs"
+            >
+              Cancelar alteração
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPendingPlaceholder = (kind: 'new' | 'old') => {
+    const message =
+      kind === 'new' ? 'Novo beneficiário não encontrado' : 'Beneficiário anterior removido';
+    const borderClass = kind === 'new' ? 'border-blue-200 text-blue-600' : 'border-slate-200 text-slate-600';
+
+    return (
+      <div
+        className={`bg-white rounded-xl shadow-lg transition-all duration-200 p-6 h-full border-2 border-dashed ${borderClass} flex items-center justify-center text-sm text-center`}
+      >
+        {message}
+      </div>
+    );
+  };
 
   useEffect(() => {
     const onOpen = (e: any) => {
@@ -214,133 +423,31 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
         ) : (
           // Lista de beneficiários
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {programBeneficiaries.map((b) => (
-              <div
-                key={b.id}
-                className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 p-6"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {b.name}
-                    </h3>
-                    <p className="text-lg font-semibold text-gray-900">CPF: {formatCPF(b.cpf)}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {/* Botão para edição individual */}
-                    <button
-                      onClick={() => {
-                        // abre modal de edição reutilizando o modal de adição (com prefill)
-                        // usamos evento customizado no DOM para evitar alterar muitas props
-                        const evt = new CustomEvent('openEditBeneficiary', { detail: { beneficiary: b } });
-                        window.dispatchEvent(evt);
-                      }}
-                      disabled={b.status === 'Pendente'}
-                      title={b.status === 'Pendente' ? 'Este beneficiário está em processo de alteração' : 'Editar beneficiário'}
-                      className={`p-2 transition-colors rounded-lg ${
-                        b.status === 'Pendente'
-                          ? 'text-gray-300 cursor-not-allowed'
-                          : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Pencil className="w-5 h-5" />
-                    </button>
+            {displayItems.map((item) => {
+              if (item.kind === 'pending-group') {
+                const { key, newBeneficiary, oldBeneficiary } = item;
+                return (
+                  <React.Fragment key={`pending-${key}`}>
+                    <div className="h-full">
+                      {newBeneficiary
+                        ? renderBeneficiaryCard(newBeneficiary, { highlight: 'new', paired: true })
+                        : renderPendingPlaceholder('new')}
+                    </div>
+                    <div className="h-full">
+                      {oldBeneficiary
+                        ? renderBeneficiaryCard(oldBeneficiary, { highlight: 'old', paired: true })
+                        : renderPendingPlaceholder('old')}
+                    </div>
+                  </React.Fragment>
+                );
+              }
 
-                    {/* Botão específico do Azul para iniciar a troca */}
-                    {program === 'azul' && (
-                      <button
-                        onClick={() => {
-                          // Abre o modal em modo 'troca'. Mantemos o initialValue para
-                          // que a submissão seja tratada como edição (submitEditBeneficiary)
-                          // porém os campos serão iniciados vazios no modal quando exchange=true.
-                          setEditBeneficiary(b);
-                          setExchangeMode(true);
-                          setExchangePreviousCpf(b.cpf);
-                          setShowModal(true);
-                        }}
-                        disabled={b.status === 'Pendente'}
-                        title={b.status === 'Pendente' ? 'Este beneficiário está em processo de alteração' : 'Trocar beneficiário'}
-                        className={`p-2 transition-colors rounded-lg ${
-                          b.status === 'Pendente'
-                            ? 'text-gray-300 cursor-not-allowed'
-                            : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                        }`}
-                      >
-                        <Repeat className="w-5 h-5" />
-                      </button>
-                    )}
-
-                    {/* Botão para exclusão individual */}
-                    <button
-                      onClick={() => setDeleteConfirm(b.id)}
-                      disabled={program === 'azul' && b.status === 'Pendente'}
-                      title={program === 'azul' && b.status === 'Pendente' 
-                        ? 'Não é possível excluir um beneficiário em processo de alteração'
-                        : 'Excluir beneficiário'
-                      }
-                      className={`p-2 transition-colors rounded-lg ${
-                        program === 'azul' && b.status === 'Pendente'
-                          ? 'text-gray-300 cursor-not-allowed'
-                          : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
-                      }`}
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
+              return (
+                <div key={item.beneficiary.id} className="h-full">
+                  {renderBeneficiaryCard(item.beneficiary)}
                 </div>
-                <p className="text-sm text-gray-600">
-                  Data de cadastro: {formatDate(b.issueDate)}
-                </p>
-                {/* Exibe o status do beneficiário */}
-                <div className="mt-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm">
-                      Status:{' '}
-                      <span
-                        className={`font-semibold ${
-                          b.status === 'Utilizado'
-                            ? 'text-red-600'
-                            : b.status === 'Pendente'
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
-                        }`}
-                      >
-                        {b.status}
-                      </span>
-                    </p>
-                    {program === 'azul' && b.status === 'Pendente' && b.previousCpf && (() => {
-                      const message = (() => {
-                        const baseDate = parseDateOnlyToLocal(b.issueDate);
-                        baseDate.setHours(0, 0, 0, 0);
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const diffDays = Math.max(0, Math.floor((today.getTime() - baseDate.getTime()) / DAY_MS));
-                        const daysLeft = Math.max(0, AZUL_PENDING_LIMIT_DAYS - diffDays);
-                        if (daysLeft <= 0) return "";
-                        return `Troca em andamento — faltam ${daysLeft} dias para completar os ${AZUL_PENDING_LIMIT_DAYS} dias iniciados em ${formatDate(b.issueDate)}`;
-                      })();
-                      return message ? (
-                        <p className="text-xs text-gray-600 mt-1">{message}</p>
-                      ) : null;
-                    })()}
-                  </div>
-
-                  {/* Se existe alteração pendente, mostrar botão para cancelar alteração */}
-                  {b.status === 'Pendente' && b.previousCpf && (
-                    <Button
-                      onClick={() => {
-                        const evt = new CustomEvent('cancelChangeBeneficiary', { detail: { id: b.id } });
-                        window.dispatchEvent(evt);
-                      }}
-                      variant="secondary"
-                      className="text-xs"
-                    >
-                      Cancelar alteração
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

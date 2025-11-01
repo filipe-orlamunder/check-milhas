@@ -37,7 +37,7 @@ router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Aut
 
     await ensureProfileBelongsToUser(profileId, userId);
 
-    // Reconciliar alterações pendentes do AZUL, aplicando as novas regras de conclusão automática
+    // Reconciliar alterações pendentes do AZUL, aplicando as regras de conclusão automática
     const reconcileAzulPending = async (profileIdToCheck?: string) => {
       const dayMs = 24 * 60 * 60 * 1000;
       const pendingLimitDays = 30;

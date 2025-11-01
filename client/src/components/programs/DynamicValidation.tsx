@@ -137,12 +137,47 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
     const limit = getProgramLimit(program);
     const all = getProfileProgramBeneficiaries(profileId, program);
     if (program === 'azul') {
-      // Na Azul, durante uma troca, os dois pendentes contam como 1
-      const pending = all.filter((b) => computeStatus('azul', b.issueDate, b.changeDate ?? null, dateRef) === 'Pendente' && !!b.changeDate);
-      const groupKeys = new Set(pending.map((b) => b.changeDate as string));
-      const pendingGroups = groupKeys.size;
-      const nonPendingCount = all.length - pending.length;
-      const effectiveRegistered = nonPendingCount + pendingGroups;
+      const singles: Beneficiary[] = [];
+      const groups = new Map<string, { members: Beneficiary[]; treatAsPending: boolean }>();
+
+      for (const ben of all) {
+        if (ben.changeDate) {
+          const key = `${ben.profileId}-${ben.changeDate}`;
+          let group = groups.get(key);
+          if (!group) {
+            group = { members: [], treatAsPending: false };
+            groups.set(key, group);
+          }
+
+          group.members.push(ben);
+
+          const statusAtDate = computeStatus(
+            'azul',
+            ben.issueDate,
+            ben.changeDate ?? null,
+            dateRef,
+            Boolean(ben.previousCpf)
+          );
+
+          if (!group.treatAsPending && (ben.status === 'Pendente' || statusAtDate === 'Pendente')) {
+            group.treatAsPending = true;
+          }
+        } else {
+          singles.push(ben);
+        }
+      }
+
+      let effectiveRegistered = singles.length;
+
+      for (const group of groups.values()) {
+        if (group.treatAsPending) {
+          effectiveRegistered += 1;
+        } else {
+          const hasReplacement = group.members.some((member) => Boolean(member.previousCpf));
+          effectiveRegistered += hasReplacement ? 1 : Math.max(1, group.members.length);
+        }
+      }
+
       const remaining = Math.max(0, limit - effectiveRegistered);
       return remaining; // Azul nunca libera
     }
