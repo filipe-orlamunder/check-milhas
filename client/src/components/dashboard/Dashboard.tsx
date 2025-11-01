@@ -53,8 +53,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // Azul: durante trocas, dois pendentes contam como 1 (agrupar por changeDate)
     const azulAll = profileBeneficiaries.filter((b) => b.program === 'azul');
     const now = new Date();
-    const azulPending = azulAll.filter((b) => computeStatus('azul', b.issueDate, (b as any).changeDate ?? null, now) === 'Pendente' && (b as any).changeDate);
-    const groupKeys = new Set<string>(azulPending.map((b: any) => b.changeDate as string));
+  const azulPending = azulAll.filter((b) => computeStatus('azul', b.issueDate, b.changeDate ?? null, now) === 'Pendente' && b.changeDate);
+  const groupKeys = new Set<string>(azulPending.map((b) => b.changeDate as string));
     const pendingGroups = groupKeys.size;
     const nonPendingCount = azulAll.length - azulPending.length;
     const azul = nonPendingCount + pendingGroups;

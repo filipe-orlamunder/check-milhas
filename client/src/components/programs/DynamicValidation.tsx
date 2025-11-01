@@ -100,7 +100,7 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
     }
     // Bloqueia datas passadas: permitir apenas hoje ou futuro
     if (filterDate < todayStr) {
-      setError('Selecione hoje ou uma data futura. Datas passadas não são permitidas.');
+      setError('Informe apenas a data atual ou uma data futura');
       return;
     }
     setAppliedDate(filterDate);

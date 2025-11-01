@@ -66,13 +66,13 @@ router.post("/login", async (req: Request, res: Response) => {
     // 2. Busca o usuário pelo e-mail
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(401).json({ error: "Credenciais inválidas." }); // Mensagem genérica
+      return res.status(401).json({ error: "Usuário ou senha incorretos" }); // Mensagem genérica
     }
 
     // 3. Compara a senha enviada com o hash armazenado
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
-      return res.status(401).json({ error: "Credenciais inválidas." }); // Mensagem genérica
+      return res.status(401).json({ error: "Usuário ou senha incorretos" }); // Mensagem genérica
     }
 
     // 4. Gera o token JWT para autenticação

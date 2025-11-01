@@ -39,6 +39,9 @@ const parseDateOnlyToLocal = (input: string | Date | undefined): Date => {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+const AZUL_PENDING_LIMIT_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 // sanitize input: limita ano a 4 dígitos e remove caracteres inválidos
 const sanitizeDateInput = (v: string) => {
   if (!v) return v;
@@ -84,7 +87,7 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
     .map((b: Beneficiary) => ({
       ...b,
       // Recalcula o status dinamicamente com base na data atual
-      status: computeStatus(b.program, b.issueDate, (b as any).changeDate ?? null, new Date(), !!(b as any).previousCpf),
+      status: computeStatus(b.program, b.issueDate, b.changeDate ?? null, new Date(), Boolean(b.previousCpf)),
     }));
 
   // Estado para intervalo de atualização do contador de dias
@@ -103,8 +106,8 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
   let currentCount = programBeneficiaries.length;
   if (program === 'azul') {
     // Para Azul, durante trocas, dois pendentes contam como 1 (agrupar por changeDate)
-    const pendentes = programBeneficiaries.filter((b: Beneficiary) => b.status === 'Pendente' && (b as any).changeDate);
-    const groupKeys = new Set<string>(pendentes.map((b: any) => b.changeDate as string));
+    const pendentes = programBeneficiaries.filter((b: Beneficiary) => b.status === 'Pendente' && b.changeDate);
+    const groupKeys = new Set<string>(pendentes.map((b) => b.changeDate as string));
     const pendingGroups = groupKeys.size;
     const nonPendingCount = programBeneficiaries.length - pendentes.length;
     currentCount = nonPendingCount + pendingGroups;
@@ -305,28 +308,25 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
                         {b.status}
                       </span>
                     </p>
-                    {program === 'azul' && b.status === 'Pendente' && (b as any).previousCpf && (
-                      <p className="text-xs text-gray-600 mt-1">
-                        {(() => {
-                          // Cálculo correto dos dias restantes
-                          const stripTime = (d: Date) => {
-                            const x = new Date(d);
-                            x.setHours(0, 0, 0, 0);
-                            return x;
-                          };
-                          const issueDate = stripTime(parseDateOnlyToLocal(b.issueDate));
-                          const today = stripTime(new Date());
-                          const diffMs = today.getTime() - issueDate.getTime();
-                          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                          const daysLeft = Math.max(60 - diffDays, 0);
-                          return `Troca em andamento — faltam ${daysLeft} dias para completar os 60 dias desde ${formatDate(b.issueDate)}`;
-                        })()}
-                      </p>
-                    )}
+                    {program === 'azul' && b.status === 'Pendente' && b.previousCpf && (() => {
+                      const message = (() => {
+                        const baseDate = parseDateOnlyToLocal(b.issueDate);
+                        baseDate.setHours(0, 0, 0, 0);
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const diffDays = Math.max(0, Math.floor((today.getTime() - baseDate.getTime()) / DAY_MS));
+                        const daysLeft = Math.max(0, AZUL_PENDING_LIMIT_DAYS - diffDays);
+                        if (daysLeft <= 0) return "";
+                        return `Troca em andamento — faltam ${daysLeft} dias para completar os ${AZUL_PENDING_LIMIT_DAYS} dias iniciados em ${formatDate(b.issueDate)}`;
+                      })();
+                      return message ? (
+                        <p className="text-xs text-gray-600 mt-1">{message}</p>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Se existe alteração pendente, mostrar botão para cancelar alteração */}
-                  {b.status === 'Pendente' && (b as any).previousCpf && (
+                  {b.status === 'Pendente' && b.previousCpf && (
                     <Button
                       onClick={() => {
                         const evt = new CustomEvent('cancelChangeBeneficiary', { detail: { id: b.id } });

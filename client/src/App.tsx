@@ -245,6 +245,105 @@ function App() {
     return () => window.removeEventListener('cancelChangeBeneficiary', onCancel as EventListener);
   }, [setBeneficiaries]);
 
+  /**
+   * Finaliza automaticamente trocas pendentes da Azul após 30 dias.
+   */
+  useEffect(() => {
+    setBeneficiaries((prev) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const pendingLimitDays = 30;
+    const fallbackRemovalDays = 60;
+
+      const parseDateOnly = (value?: string) => {
+        if (!value) return null;
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+          const y = Number(match[1]);
+          const m = Number(match[2]);
+          const d = Number(match[3]);
+          const local = new Date(y, m - 1, d);
+          local.setHours(0, 0, 0, 0);
+          return local;
+        }
+        const direct = new Date(value);
+        if (!Number.isNaN(direct.getTime())) {
+          direct.setHours(0, 0, 0, 0);
+          return direct;
+        }
+        return null;
+      };
+
+      const removals = new Set<string>();
+      const updates = new Map<string, Beneficiary>();
+      let mutated = false;
+
+      const groups = new Map<string, { changeDate: string; members: Beneficiary[] }>();
+
+      for (const ben of prev) {
+        if (ben.program === "azul" && ben.status === "Pendente" && ben.changeDate) {
+          const key = `${ben.profileId}|${ben.changeDate}`;
+          const entry = groups.get(key);
+          if (entry) {
+            entry.members.push(ben);
+          } else {
+            groups.set(key, { changeDate: ben.changeDate, members: [ben] });
+          }
+        }
+      }
+
+      for (const { changeDate, members } of groups.values()) {
+        const newMember = members.find((member) => Boolean(member.previousCpf || member.previousBeneficiary));
+        const baseDate = newMember
+          ? parseDateOnly(newMember.issueDate)
+          : parseDateOnly(changeDate) ?? parseDateOnly(members[0]?.issueDate);
+
+        if (!baseDate) {
+          continue;
+        }
+
+        const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
+
+        if (!newMember) {
+          if (diffDays >= fallbackRemovalDays) {
+            mutated = true;
+            members.forEach((member) => removals.add(member.id));
+          }
+          continue;
+        }
+
+        if (diffDays < pendingLimitDays) continue;
+
+        for (const member of members) {
+          if (member.id === newMember.id) {
+            mutated = true;
+            const cleaned = {
+              ...member,
+              status: "Utilizado",
+              changeDate: undefined,
+              previousBeneficiary: undefined,
+              previousCpf: undefined,
+              previousName: undefined,
+              previousDate: undefined,
+            } as Beneficiary;
+            updates.set(member.id, cleaned);
+          } else {
+            mutated = true;
+            removals.add(member.id);
+          }
+        }
+      }
+
+      if (!mutated) return prev;
+
+      return prev
+        .filter((ben) => !removals.has(ben.id))
+        .map((ben) => (updates.has(ben.id) ? updates.get(ben.id)! : ben));
+    });
+  }, [beneficiaries, setBeneficiaries]);
+
   // --- RENDERIZAÇÃO E ROTEAMENTO ---
 
   if (currentUser) {

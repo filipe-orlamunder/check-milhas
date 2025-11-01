@@ -41,6 +41,10 @@ export interface Beneficiary {
     cpf: string;
     issueDate: string;
   };
+  // Campos auxiliares de controle de troca (Azul)
+  previousCpf?: string;
+  previousName?: string;
+  previousDate?: string;
   // Data da última alteração de beneficiário (opcional)
   changeDate?: string;
 }

@@ -37,36 +37,86 @@ router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Aut
 
     await ensureProfileBelongsToUser(profileId, userId);
 
-    // Reconciliar alterações pendentes do AZUL que já passaram do período de carência (60 dias)
+    // Reconciliar alterações pendentes do AZUL, aplicando as novas regras de conclusão automática
     const reconcileAzulPending = async (profileIdToCheck?: string) => {
-      const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 dias atrás
-      const wherePending: any = { program: 'AZUL', status: 'PENDENTE', changeDate: { lte: cutoff } };
-      if (profileIdToCheck) wherePending.profileId = profileIdToCheck;
+      const dayMs = 24 * 60 * 60 * 1000;
+      const pendingLimitDays = 30;
+      const fallbackRemovalDays = 60;
 
-      const pendings = await prisma.beneficiary.findMany({ where: wherePending });
-      for (const p of pendings) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const baseFilter = {
+        program: 'AZUL',
+        status: 'PENDENTE',
+        ...(profileIdToCheck ? { profileId: profileIdToCheck } : {}),
+      } as const;
+
+      const pendingNew = await prisma.beneficiary.findMany({
+        where: {
+          ...baseFilter,
+          NOT: { previousCpf: null },
+        },
+      });
+
+      for (const pending of pendingNew) {
         try {
-          if (p.previousName) {
-            // este registro é o novo; encontre o antigo e atualize ambos
-            if (p.previousCpf && p.changeDate) {
-              const prev = await prisma.beneficiary.findFirst({ where: { profileId: p.profileId, program: 'AZUL', cpf: p.previousCpf, changeDate: p.changeDate } });
-              if (prev) {
-                await prisma.beneficiary.update({ where: { id: prev.id }, data: { status: Status.LIBERADO, changeDate: null } });
-              }
+          const baseDate = new Date(pending.issueDate);
+          baseDate.setHours(0, 0, 0, 0);
+          const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
+          if (diffDays < pendingLimitDays) {
+            continue;
+          }
+
+          if (pending.previousCpf && pending.changeDate) {
+            const previous = await prisma.beneficiary.findFirst({
+              where: {
+                profileId: pending.profileId,
+                program: 'AZUL',
+                cpf: pending.previousCpf,
+                changeDate: pending.changeDate,
+              },
+            });
+
+            if (previous) {
+              await prisma.beneficiary.delete({ where: { id: previous.id } });
             }
-            await prisma.beneficiary.update({ where: { id: p.id }, data: { status: Status.UTILIZADO, changeDate: null } });
-          } else {
-            // este registro é o antigo (sem previousName) — encontre o novo e atualize
-            if (p.changeDate) {
-              const paired = await prisma.beneficiary.findFirst({ where: { profileId: p.profileId, program: 'AZUL', previousCpf: p.cpf, changeDate: p.changeDate } });
-              if (paired) {
-                await prisma.beneficiary.update({ where: { id: paired.id }, data: { status: Status.UTILIZADO, changeDate: null } });
-              }
-            }
-            await prisma.beneficiary.update({ where: { id: p.id }, data: { status: Status.LIBERADO, changeDate: null } });
+          }
+
+          await prisma.beneficiary.update({
+            where: { id: pending.id },
+            data: {
+              status: Status.UTILIZADO,
+              changeDate: null,
+              previousName: null,
+              previousCpf: null,
+              previousDate: null,
+            },
+          });
+        } catch (err) {
+          console.error('Erro finalizando troca AZUL', err);
+        }
+      }
+
+      const orphanOld = await prisma.beneficiary.findMany({
+        where: {
+          ...baseFilter,
+          previousCpf: null,
+          previousName: null,
+        },
+      });
+
+      for (const old of orphanOld) {
+        try {
+          if (!old.changeDate) continue;
+          const baseDate = new Date(old.changeDate);
+          baseDate.setHours(0, 0, 0, 0);
+          const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
+          if (diffDays >= fallbackRemovalDays) {
+            await prisma.beneficiary.delete({ where: { id: old.id } });
           }
         } catch (err) {
-          console.error('Erro reconciliando AZUL pendente', err);
+          console.error('Erro removendo beneficiário AZUL órfão', err);
         }
       }
     };
@@ -234,8 +284,7 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
         today.setHours(0, 0, 0, 0);
         const newDateOnly = new Date(newIssueDate);
         newDateOnly.setHours(0, 0, 0, 0);
-        if (newDateOnly > today) return res.status(400).json({ error: "A data de cadastro não pode ser futura" });
-        if (newDateOnly < today) return res.status(400).json({ error: "A data de cadastro da alteração não pode ser anterior à data atual" });
+  if (newDateOnly > today) return res.status(400).json({ error: "A data de cadastro não pode ser futura" });
 
       // Atualiza o registro antigo para PENDENTE
       await prisma.beneficiary.update({ where: { id }, data: { changeDate: now, status: Status.PENDENTE } });
@@ -255,6 +304,23 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
           status: Status.PENDENTE
         }
       });
+
+      const dayMs = 24 * 60 * 60 * 1000;
+      const diffDays = Math.floor((today.getTime() - newDateOnly.getTime()) / dayMs);
+      if (diffDays >= 30) {
+        await prisma.beneficiary.delete({ where: { id } });
+        const finalized = await prisma.beneficiary.update({
+          where: { id: createdNew.id },
+          data: {
+            status: Status.UTILIZADO,
+            changeDate: null,
+            previousName: null,
+            previousCpf: null,
+            previousDate: null,
+          },
+        });
+        return res.json(finalized);
+      }
 
       return res.json(createdNew);
     }
