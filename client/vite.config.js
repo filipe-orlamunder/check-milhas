@@ -13,4 +13,13 @@ export default defineConfig({
     // Habilita o plugin do React, que inclui o suporte ao Fast Refresh
     react()
   ],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setupTests.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+    },
+  },
 })
