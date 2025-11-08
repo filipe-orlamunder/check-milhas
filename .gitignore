@@ -1,3 +1,9 @@
 # Test coverage outputs
 client/coverage/
 server/coverage/
+
+# Environment variables (never commit secrets)
+.env
+.env.*
+**/.env
+**/.env.*
