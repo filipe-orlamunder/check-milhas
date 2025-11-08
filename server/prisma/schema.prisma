@@ -1,8 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -10,7 +8,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ENUMs para padronizar os tipos
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  passwordHash String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  profiles  Profile[]
+}
+
+model Profile {
+  id            String         @id @default(cuid())
+  name          String
+  cpf           String
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  beneficiaries Beneficiary[]
+}
+
 enum Program {
   LATAM
   SMILES
@@ -23,45 +41,22 @@ enum Status {
   PENDENTE
 }
 
-// Modelo para os usuários do sistema
-model User {
-  id           String    @id @default(uuid())
-  name         String
-  email        String    @unique
-  passwordHash String
-  profiles     Profile[] // Um usuário pode ter vários perfis
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-}
-
-// Modelo para os perfis (donos das milhas)
-model Profile {
-  id            String        @id @default(uuid())
-  name          String
-  cpf           String       @unique
-  userId        String
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  beneficiaries Beneficiary[] // Um perfil pode ter vários beneficiários
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-}
-
-// Modelo para os beneficiários de cada programa
 model Beneficiary {
-  id           String   @id @default(uuid())
-  profileId    String
-  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  program      Program
-  name         String
-  cpf          String
-  issueDate    DateTime // Data de cadastro do beneficiário
-  status       Status
-  previousName String?  // Campos para a lógica de alteração do programa AZUL
-  previousCpf  String?
-  previousDate DateTime?
-  changeDate   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  profileId     String
+  program       Program
+  name          String
+  cpf           String
+  issueDate     DateTime
+  changeDate    DateTime?
+  previousName  String?
+  previousCpf   String?
+  previousDate  DateTime?
+  status        Status    @default(UTILIZADO)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  profile       Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@unique([profileId, program, cpf]) // Evita duplicidade de CPF por perfil e programa (independe do status)
+  @@unique([profileId, program, cpf])
+  @@index([profileId, program])
 }

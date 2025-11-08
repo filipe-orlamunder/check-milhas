@@ -5,7 +5,7 @@ import { SignupForm } from "./components/auth/SignupForm";
 import { Dashboard } from "./components/dashboard/Dashboard";
 import { ProfileView } from "./components/dashboard/ProfileView";
 import { ProgramScreen } from "./components/programs/ProgramScreen";
-import { apiDelete } from "./api";
+import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
 /**
  * Hook customizado para gerenciar estado local com persistência no localStorage.
@@ -80,6 +80,50 @@ function App() {
   );
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
 
+  // Helpers de mapeamento entre API (enums em CAIXA ALTA) e app (strings minúsculas/pt-BR)
+  const toApiProgram = (p: Beneficiary["program"]) => p.toUpperCase() as "LATAM" | "SMILES" | "AZUL";
+  const fromApiProgram = (p: string) => p.toLowerCase() as Beneficiary["program"];
+  const fromApiStatus = (s: string) => {
+    if (s === "UTILIZADO") return "Utilizado" as const;
+    if (s === "LIBERADO") return "Liberado" as const;
+    if (s === "PENDENTE") return "Pendente" as const;
+    return "Utilizado" as const;
+  };
+
+  // Atualiza somente os beneficiários de um perfil+programa com o payload vindo da API
+  const replaceBeneficiariesFor = (profileId: string, program: Beneficiary["program"], apiItems: any[]) => {
+    setBeneficiaries((prev) => {
+      const rest = prev.filter((b) => !(b.profileId === profileId && b.program === program));
+      const mapped = apiItems.map((it) => ({
+        id: it.id,
+        profileId: it.profileId,
+        program: fromApiProgram(it.program),
+        name: it.name,
+        cpf: it.cpf,
+        issueDate: typeof it.issueDate === "string" ? it.issueDate : new Date(it.issueDate).toISOString().slice(0, 10),
+        status: fromApiStatus(it.status),
+        previousBeneficiary: it.previousName && it.previousCpf && it.previousDate
+          ? { name: it.previousName, cpf: it.previousCpf, issueDate: (typeof it.previousDate === "string" ? it.previousDate : new Date(it.previousDate).toISOString().slice(0,10)) }
+          : undefined,
+        previousCpf: it.previousCpf ?? undefined,
+        previousName: it.previousName ?? undefined,
+        previousDate: it.previousDate ? (typeof it.previousDate === "string" ? it.previousDate : new Date(it.previousDate).toISOString().slice(0,10)) : undefined,
+        changeDate: it.changeDate ? (typeof it.changeDate === "string" ? it.changeDate : new Date(it.changeDate).toISOString()) : undefined,
+      })) as Beneficiary[];
+      return [...rest, ...mapped];
+    });
+  };
+
+  const refreshBeneficiaries = async (profileId: string, program: Beneficiary["program"]) => {
+    try {
+      const progApi = toApiProgram(program);
+      const data = await apiGet<any[]>(`/profiles/${profileId}/beneficiaries?program=${progApi}`, token);
+      replaceBeneficiariesFor(profileId, program, data);
+    } catch (err: any) {
+      console.error("Falha ao carregar beneficiários:", err);
+    }
+  };
+
   /**
    * Gerencia o login: define usuário, token e navega para o dashboard.
    */
@@ -144,106 +188,101 @@ function App() {
   /**
    * Adiciona um novo beneficiário à lista.
    */
-  const handleAddBeneficiary = (beneficiary: Beneficiary) => {
-    setBeneficiaries((prev) => [...prev, beneficiary]);
+  const handleAddBeneficiary = async (beneficiary: Beneficiary) => {
+    try {
+      const body = {
+        program: toApiProgram(beneficiary.program),
+        name: beneficiary.name,
+        cpf: beneficiary.cpf,
+        issueDate: beneficiary.issueDate,
+      };
+      await apiPost(`/profiles/${beneficiary.profileId}/beneficiaries`, body, token);
+      await refreshBeneficiaries(beneficiary.profileId, beneficiary.program);
+    } catch (err: any) {
+      console.error("Falha ao criar beneficiário:", err);
+      alert(err?.body?.error ?? "Erro ao criar beneficiário");
+    }
   };
 
   /**
    * Remove um beneficiário específico por ID.
    */
-  const handleDeleteBeneficiary = (id: string) => {
-    setBeneficiaries((prev) => prev.filter((b) => b.id !== id));
+  const handleDeleteBeneficiary = async (id: string) => {
+    try {
+      // Encontrar contexto para recarregar após remoção
+      const target = beneficiaries.find((b) => b.id === id);
+      await apiDelete(`/beneficiaries/${id}`, token);
+      if (target) await refreshBeneficiaries(target.profileId, target.program);
+      else setBeneficiaries((prev) => prev.filter((b) => b.id !== id));
+    } catch (err: any) {
+      console.error("Falha ao excluir beneficiário:", err);
+      alert(err?.body?.error ?? "Erro ao excluir beneficiário");
+    }
   };
 
   /**
    * Remove todos os beneficiários de um perfil em um programa específico.
    */
-  const handleDeleteAllBeneficiaries = (
+  const handleDeleteAllBeneficiaries = async (
     profileId: string,
     program: "latam" | "smiles" | "azul"
   ) => {
-    setBeneficiaries((prev) =>
-      prev.filter((b) => !(b.profileId === profileId && b.program === program))
-    );
+    try {
+      const progApi = toApiProgram(program);
+      await apiDelete(`/profiles/${profileId}/beneficiaries?program=${progApi}`, token);
+      await refreshBeneficiaries(profileId, program);
+    } catch (err: any) {
+      console.error("Falha ao excluir todos os beneficiários:", err);
+      alert(err?.body?.error ?? "Erro ao excluir beneficiários");
+    }
   };
 
   /**
    * Efeito para tratar a edição de beneficiário, incluindo lógica de substituição para 'azul'.
    */
   useEffect(() => {
-    const onSubmitEdit = (e: any) => {
+    const onSubmitEdit = async (e: any) => {
       const ben: Beneficiary = e?.detail?.beneficiary;
       if (!ben) return;
 
-      setBeneficiaries((prev) => {
-        // Lógica de substituição específica para o programa Azul
-        if (ben.program === 'azul') {
-          const idx = prev.findIndex((b) => b.id === ben.id);
-          if (idx !== -1) {
-            const updated = [...prev];
-            const existing = updated[idx];
-            // Se o CPF for alterado, inicia a substituição pendente
-            if (existing.cpf !== ben.cpf) {
-              const nowIso = new Date().toISOString();
-              // O beneficiário anterior se torna 'Pendente'
-              updated[idx] = { ...existing, status: 'Pendente', changeDate: nowIso } as Beneficiary;
-              // Adiciona o novo beneficiário também como 'Pendente'
-              updated.push({
-                ...ben,
-                id: Date.now().toString(),
-                status: 'Pendente',
-                previousBeneficiary: { name: existing.name, cpf: existing.cpf, issueDate: existing.issueDate },
-                previousCpf: existing.cpf,
-                previousName: existing.name,
-                previousDate: existing.issueDate,
-                changeDate: nowIso,
-              } as unknown as Beneficiary);
-            } else {
-              // Edição simples de outros campos
-                updated[idx] = { ...existing, ...ben } as Beneficiary;
-            }
-            return updated as Beneficiary[];
-          }
-        }
-
-        // Caso padrão: substituição por ID
-        return prev.map((b) => (b.id === ben.id ? ({ ...b, ...ben } as Beneficiary) : b));
-      });
+      try {
+        const existing = beneficiaries.find((b) => b.id === ben.id);
+        const body: any = { name: ben.name, cpf: ben.cpf, issueDate: ben.issueDate };
+        await apiPut(`/beneficiaries/${ben.id}`, body, token);
+        // Após editar (inclui fluxo de TROCA Azul), recarrega a lista do programa
+        const profId = existing?.profileId ?? ben.profileId;
+        const prog = existing?.program ?? ben.program;
+        await refreshBeneficiaries(profId, prog);
+      } catch (err: any) {
+        console.error("Falha ao editar beneficiário:", err);
+        alert(err?.body?.error ?? "Erro ao editar beneficiário");
+      }
     };
 
     window.addEventListener('submitEditBeneficiary', onSubmitEdit as EventListener);
     return () => window.removeEventListener('submitEditBeneficiary', onSubmitEdit as EventListener);
-  }, [setBeneficiaries]);
+  }, [beneficiaries, token]);
 
   /**
    * Efeito para cancelar uma alteração pendente (regra do Azul).
    */
   useEffect(() => {
-    const onCancel = (e: any) => {
+    const onCancel = async (e: any) => {
       const id: string = e?.detail?.id;
       if (!id) return;
-
-      setBeneficiaries((prev) => {
-        const target = prev.find((b) => b.id === id);
-        if (!target || !target.previousBeneficiary) return prev;
-
-        // Remove o beneficiário 'novo' (pendente) e restaura o 'antigo'
-        const restored = prev
-          .filter((b) => b.id !== id)
-          .map((b) => {
-            if (b.cpf === target.previousBeneficiary?.cpf && b.program === 'azul') {
-              // Restaura o status do beneficiário anterior para 'Utilizado'
-              return ({ ...b, status: 'Utilizado', changeDate: undefined, previousBeneficiary: undefined } as Beneficiary);
-            }
-            return b;
-          }) as Beneficiary[];
-        return restored;
-      });
+      try {
+        const target = beneficiaries.find((b) => b.id === id);
+        await apiPost(`/beneficiaries/${id}/cancel-change`, {}, token);
+        if (target) await refreshBeneficiaries(target.profileId, target.program);
+      } catch (err: any) {
+        console.error("Falha ao cancelar alteração:", err);
+        alert(err?.body?.error ?? "Erro ao cancelar alteração");
+      }
     };
 
     window.addEventListener('cancelChangeBeneficiary', onCancel as EventListener);
     return () => window.removeEventListener('cancelChangeBeneficiary', onCancel as EventListener);
-  }, [setBeneficiaries]);
+  }, [beneficiaries, token]);
 
   /**
    * Finaliza automaticamente trocas pendentes da Azul após 30 dias.
@@ -343,6 +382,14 @@ function App() {
         .map((ben) => (updates.has(ben.id) ? updates.get(ben.id)! : ben));
     });
   }, [beneficiaries, setBeneficiaries]);
+
+  // Ao entrar numa tela de programa com um perfil selecionado, carrega do backend
+  useEffect(() => {
+    const programScreens = ["latam", "smiles", "azul"] as const;
+    if (selectedProfile && programScreens.includes(currentScreen as any)) {
+      refreshBeneficiaries(selectedProfile.id, currentScreen as any);
+    }
+  }, [currentScreen, selectedProfile]);
 
   // --- RENDERIZAÇÃO E ROTEAMENTO ---
 
