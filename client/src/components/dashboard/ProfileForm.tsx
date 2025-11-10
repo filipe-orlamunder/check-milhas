@@ -1,10 +1,11 @@
 // client/src/components/dashboard/ProfileForm.tsx
 import React, { useState } from "react";
 import { Profile } from "../../types";
-import { X, Save } from "lucide-react";
+import { X } from "lucide-react";
 import { apiPost } from "../../api";
 import { Button } from "../common/Button";
-import { onlyDigits, formatCPF } from "../../utils/formatters";
+import { formatCPF, onlyDigits } from "../../utils/formatters";
+import { isValidCPF } from "../../utils/cpf";
 
 // Definição das propriedades do componente
 interface ProfileFormProps {
@@ -25,12 +26,6 @@ const validateName = (name: string) => {
   return l >= 4 && l <= 60;
 };
 
-/**
- * Valida se o CPF contém exatamente 11 dígitos numéricos.
- */
-const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf));
-
-
 // --- Componente ProfileForm ---
 
 /**
@@ -39,7 +34,7 @@ const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf));
 export const ProfileForm: React.FC<ProfileFormProps> = ({
   onSubmit,
   onCancel,
-  userId,
+  userId: _userId,
 }) => {
   // Estados do formulário
   const [name, setName] = useState("");
@@ -48,26 +43,38 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  const cpfDigits = onlyDigits(cpf);
+  const hasFullCpf = cpfDigits.length === 11;
+  const inlineCpfError = !errors.cpf && hasFullCpf && !isValidCPF(cpf) ? "CPF inválido" : undefined;
+  const cpfErrorMessage = errors.cpf ?? inlineCpfError;
+  const hasCpfError = Boolean(cpfErrorMessage);
+
   /**
    * Executa a validação local dos campos do formulário.
    */
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!validateName(name)) newErrors.name = "Nome deve ter entre 4 e 60 caracteres";
-    if (!validateCPF(cpf)) newErrors.cpf = "CPF deve conter 11 dígitos";
+    if (!hasFullCpf) newErrors.cpf = "CPF deve conter 11 dígitos";
+    else if (!isValidCPF(cpf)) newErrors.cpf = "CPF inválido";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   // Determina se o formulário está sintaticamente válido para submissão
-  const isFormValid = validateName(name) && validateCPF(cpf);
+  const isFormValid = validateName(name) && hasFullCpf;
 
   /**
    * Lida com a entrada de CPF, limitando a 11 dígitos e removendo formatação.
    */
   const handleCpfChange = (value: string) => {
-    const numbers = value.replace(/\D/g, "").slice(0, 11);
+    const numbers = onlyDigits(value).slice(0, 11);
     setCpf(numbers);
+    setErrors((prev) => {
+      if (!prev.cpf) return prev;
+      const { cpf: _cpf, ...rest } = prev;
+      return rest;
+    });
   };
 
   /**
@@ -133,11 +140,11 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
               value={formatCPF(cpf)} // Exibe o CPF formatado
               onChange={(e) => handleCpfChange(e.target.value)}
               className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all duration-200 ${
-                errors.cpf ? "border-red-300 focus:ring-red-500" : "border-gray-300 focus:ring-blue-500"
+                hasCpfError ? "border-red-300 focus:ring-red-500" : "border-gray-300 focus:ring-blue-500"
               }`}
               placeholder="000.000.000-00"
             />
-            {errors.cpf && <p className="text-red-600 text-sm mt-1">{errors.cpf}</p>}
+            {cpfErrorMessage && <p className="text-red-600 text-sm mt-1">{cpfErrorMessage}</p>}
           </div>
 
           {serverError && <p className="text-red-600 text-sm">{serverError}</p>}

@@ -1,6 +1,7 @@
 // src/components/programs/ProgramScreen.tsx
 import React, { useState, useEffect } from "react";
 import { onlyDigits, formatCPF } from "../../utils/formatters";
+import { isValidCPF } from "../../utils/cpf";
 import { Beneficiary, Profile } from "../../types";
 import { computeStatus } from "../../utils/statusCalculator";
 import { ArrowLeft, Plus, Trash2, X, Users, Pencil, Repeat } from "lucide-react";
@@ -22,7 +23,6 @@ const validateName = (name: string) => {
   const l = name.trim().length;
   return l >= 4 && l <= 60;
 };
-const validateCPF = (cpf: string) => /^\d{11}$/.test(onlyDigits(cpf)); // Valida se o CPF tem 11 dígitos
 // Parsea YYYY-MM-DD como data local para evitar deslocamentos por UTC
 const parseDateOnlyToLocal = (input: string | Date | undefined): Date => {
   if (!input) return new Date();
@@ -595,6 +595,12 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
   const isEdit = !!initialValue;
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const cpfDigits = onlyDigits(cpf);
+  const hasFullCpf = cpfDigits.length === 11;
+  const inlineCpfError = !errors.cpf && hasFullCpf && !isValidCPF(cpf) ? "CPF inválido" : undefined;
+  const cpfErrorMessage = errors.cpf ?? inlineCpfError;
+  const hasCpfError = Boolean(cpfErrorMessage);
+
   // Valida o formulário antes da submissão
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -602,13 +608,14 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
     if (!validateName(name)) {
       newErrors.name = "Nome deve ter entre 4 e 60 caracteres";
     }
-    if (!validateCPF(cpf)) {
+    if (!hasFullCpf) {
       newErrors.cpf = "CPF deve conter 11 dígitos";
+    } else if (!isValidCPF(cpf)) {
+      newErrors.cpf = "CPF inválido";
     }
     // Em modo de troca (Azul), não permitir cadastrar o mesmo CPF que estava
     // anteriormente cadastrado para o beneficiário alvo.
-    if (exchange && previousCpf) {
-      const cpfDigits = onlyDigits(cpf);
+    if (!newErrors.cpf && exchange && previousCpf) {
       const prevDigits = onlyDigits(previousCpf);
       if (cpfDigits === prevDigits) {
         newErrors.cpf = 'Não é possível cadastrar o mesmo CPF do beneficiário anterior durante a troca';
@@ -647,10 +654,9 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
     }
 
     // Impede cadastrar CPF repetido no mesmo perfil/programa
-    const digits = onlyDigits(cpf);
-    const existsAlready = existingCpfs.some((c) => onlyDigits(c) === digits);
-    const isEditingSameCpf = isEdit && onlyDigits(initialValue?.cpf || "") === digits;
-    if (existsAlready && !isEditingSameCpf) {
+    const existsAlready = existingCpfs.some((c) => onlyDigits(c) === cpfDigits);
+    const isEditingSameCpf = isEdit && onlyDigits(initialValue?.cpf || "") === cpfDigits;
+    if (!newErrors.cpf && existsAlready && !isEditingSameCpf) {
       newErrors.cpf = "CPF já cadastrado";
     }
 
@@ -659,12 +665,17 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
   };
 
   // Verifica se o formulário é válido para habilitar o botão
-  const isFormValid = validateName(name) && validateCPF(cpf) && !!issueDate && DATE_RE.test(issueDate);
+  const isFormValid = validateName(name) && hasFullCpf && !!issueDate && DATE_RE.test(issueDate);
 
   // Lida com a mudança no campo de CPF
   const handleCpfChange = (value: string) => {
-    const numbers = value.replace(/\D/g, "").slice(0, 11);
+    const numbers = onlyDigits(value).slice(0, 11);
     setCpf(numbers);
+    setErrors((prev) => {
+      if (!prev.cpf) return prev;
+      const { cpf: _cpf, ...rest } = prev;
+      return rest;
+    });
   };
 
   // Lida com a submissão do formulário
@@ -754,14 +765,14 @@ const AddBeneficiaryModal: React.FC<AddBeneficiaryModalProps> = ({
               value={formatCPF(cpf)}
               onChange={(e) => handleCpfChange(e.target.value)}
               className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-all duration-200 ${
-                errors.cpf
+                hasCpfError
                   ? "border-red-300 focus:ring-red-500"
                   : "border-gray-300 focus:ring-blue-500"
               }`}
               placeholder="000.000.000-00"
             />
-            {errors.cpf && (
-              <p className="text-red-600 text-sm mt-1">{errors.cpf}</p>
+            {cpfErrorMessage && (
+              <p className="text-red-600 text-sm mt-1">{cpfErrorMessage}</p>
             )}
           </div>
 
