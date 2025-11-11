@@ -71,6 +71,18 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
   const [filterDate, setFilterDate] = useState(todayStr);
   const [appliedDate, setAppliedDate] = useState(todayStr);
   const [error, setError] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const detailsContent = {
+    title: 'Validação Dinâmica',
+    description:
+      'Use esta validação para saber quantos novos beneficiários poderão ser cadastrados em uma data específica.',
+    bullets: [
+      'Informe a data de referência para simular liberações futuras, sem alterar dados reais.',
+      'Observe quais serão os beneficiários liberados no Latam Pass e na Smiles, considerando a data de referência informada.',
+      'O Azul Fidelidade exibe apenas vagas disponíveis, pois não há liberação automática por data.',
+    ],
+  };
 
   // Regex para validação de formato YYYY-MM-DD
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -203,9 +215,18 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
             </div>
             <h2 className="text-2xl font-bold text-gray-900">Validação Dinâmica</h2>
           </div>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600" aria-label="Fechar">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center space-x-3">
+            <Button
+              onClick={() => setShowDetails(true)}
+              variant="secondary"
+              className="text-sm"
+            >
+              Detalhes
+            </Button>
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600" aria-label="Fechar">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Controles de Filtro */}
@@ -326,6 +347,37 @@ export const DynamicValidation: React.FC<DynamicValidationProps> = ({
             ))
           )}
         </div>
+
+        {showDetails && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Como funciona?</h3>
+                  <p className="text-sm text-gray-600 mt-1">{detailsContent.title}</p>
+                </div>
+                <button
+                  onClick={() => setShowDetails(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Fechar"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <p className="text-gray-700 mb-4">{detailsContent.description}</p>
+              <ul className="list-disc pl-6 space-y-2 text-gray-700">
+                {detailsContent.bullets.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <div className="mt-8 flex justify-end">
+                <Button onClick={() => setShowDetails(false)} className="px-6">
+                  Ok
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

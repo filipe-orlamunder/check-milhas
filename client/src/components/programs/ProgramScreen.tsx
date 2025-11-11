@@ -85,6 +85,7 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
 }) => {
   // Estados para controlar modais e confirmação de exclusão
   const [showModal, setShowModal] = useState(false);
+  const [showProgramDetails, setShowProgramDetails] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [editBeneficiary, setEditBeneficiary] = useState<Beneficiary | null>(null);
@@ -341,12 +342,44 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
 
   // Mapeamento de nomes de programas para exibição
   const programNames = {
-    latam: "LATAM Pass",
+    latam: "Latam Pass",
     smiles: "Smiles",
     azul: "Azul Fidelidade",
   };
 
-  // ...existing code...
+  const programDetails = {
+    latam: {
+      title: "Latam Pass",
+      description:
+        "Regras para cadastrar e acompanhar beneficiários no Latam Pass.",
+      rules: [
+        "Limite de 25 beneficiários por perfil.",
+        "Cada novo cadastro permanece como utilizado durante 1 anos.",
+        "O beneficiário muda automaticamente para Liberado após 1 ano da data de cadastro.",
+      ],
+    },
+    smiles: {
+      title: "Smiles",
+      description:
+        "Regras para cadastrar e acompanhar beneficiários na Smiles.",
+      rules: [
+        "Limite de 25 beneficiários por perfil.",
+        "Cada novo cadastro permanece como utilizado durante o ano civil corrente.",
+        "O beneficiário muda automaticamente para Liberado todo dia 01 de janeiro do ano seguinte da data de cadastro.",
+      ],
+    },
+    azul: {
+      title: "Azul Fidelidade",
+      description:
+        "Fluxo de trocas e restrições dos beneficiários no Azul Fidelidade.",
+      rules: [
+        "Limite de 5 beneficiários utilizados por perfil.",
+        "As trocas geram uma contagem para acompanhamento do tempo de carência, em que o beneficiário anterior e o novo são apresentados em tela como pendentes até a conclusão.",
+        "Trocas ficam com o status pendente por 30 dias, considerando sempre a data atual.",
+        "Durante o período pendente não é possível remover o beneficiário antigo, nem cadastrar novamente o mesmo CPF.",
+      ],
+    },
+  } as const;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -371,18 +404,28 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
             </div>
           </div>
 
-          {/* Botão para excluir todos os beneficiários do programa */}
-          {programBeneficiaries.length > 0 && (
+          <div className="flex items-center space-x-3">
             <Button
-              onClick={() => setDeleteAllConfirm(true)}
-              variant="danger"
-              title="Excluir todos os beneficiários"
-              className="text-sm flex items-center space-x-2"
+              onClick={() => setShowProgramDetails(true)}
+              variant="secondary"
+              title="Ver regras do programa"
+              className="text-sm"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>Excluir todos</span>
+              Detalhes
             </Button>
-          )}
+            {/* Botão para excluir todos os beneficiários do programa */}
+            {programBeneficiaries.length > 0 && (
+              <Button
+                onClick={() => setDeleteAllConfirm(true)}
+                variant="danger"
+                title="Excluir todos os beneficiários"
+                className="text-sm flex items-center space-x-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Excluir todos</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -489,6 +532,39 @@ export const ProgramScreen: React.FC<ProgramScreenProps> = ({
           __html: `window.addEventListener('openEditBeneficiary', function(e){ window.dispatchEvent(new CustomEvent('triggerOpenModal', {detail: e.detail})); });`,
         }}
       />
+
+      {showProgramDetails && (() => {
+        const detail = programDetails[program];
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Regras do programa</h3>
+                  <p className="text-sm text-gray-600 mt-1">{detail.title}</p>
+                </div>
+                <button
+                  onClick={() => setShowProgramDetails(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <p className="text-gray-700 mb-4">{detail.description}</p>
+              <ul className="list-disc pl-6 space-y-2 text-gray-700">
+                {detail.rules.map((rule) => (
+                  <li key={rule}>{rule}</li>
+                ))}
+              </ul>
+              <div className="mt-8 flex justify-end">
+                <Button onClick={() => setShowProgramDetails(false)} className="px-6">
+                  Ok
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal de confirmação de exclusão */}
       {deleteConfirm && (
