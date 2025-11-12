@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { computeStatus } from "../utils/statusCalculator";
 import parseDateOnlyToLocal, { DATE_RE } from "../utils/dateUtils";
+import { nowInBrazil } from "../utils/timezone";
 import { authMiddleware, AuthRequest } from "../middleware/authMiddleware";
 import { Program, Status } from "@prisma/client";
 
@@ -19,7 +20,7 @@ router.get("/validation-dynamic", authMiddleware, async (req: AuthRequest, res) 
     if (dateParam && !DATE_RE.test(dateParam)) {
       return res.status(400).json({ error: 'Formato de data inválido. Use YYYY-MM-DD' });
     }
-    const refDate = dateParam ? parseDateOnlyToLocal(dateParam) : new Date();
+  const refDate = dateParam ? parseDateOnlyToLocal(dateParam) : nowInBrazil();
 
     // Carrega perfis e beneficiários do usuário
     const profiles = await prisma.profile.findMany({

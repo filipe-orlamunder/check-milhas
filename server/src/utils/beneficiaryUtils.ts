@@ -1,4 +1,5 @@
 import { Program, Status } from "@prisma/client";
+import { nowInBrazil } from "./timezone";
 
 /**
  * Calcula o status de um beneficiário com base no programa e nas datas de emissão/alteração.
@@ -8,33 +9,29 @@ import { Program, Status } from "@prisma/client";
  * @returns O status calculado (UTILIZADO, LIBERADO, PENDENTE).
  */
 export function computeStatus(program: Program, issueDate: Date, changeDate?: Date | null): Status {
-  const now = new Date();
+  const now = nowInBrazil();
 
   if (program === "LATAM") {
-    // LATAM: Liberado após 1 ano da data de emissão.
     const oneYear = new Date(issueDate);
     oneYear.setFullYear(oneYear.getFullYear() + 1);
-    return now < oneYear ? "UTILIZADO" : "LIBERADO";
+    return now < oneYear ? Status.UTILIZADO : Status.LIBERADO;
   }
 
   if (program === "SMILES") {
-    // SMILES: Liberado no início do ano seguinte à data de emissão.
-    if (issueDate.getFullYear() < now.getFullYear()) return "LIBERADO";
-    const resetDate = new Date(issueDate.getFullYear() + 1, 0, 1); // 1º de Janeiro do próximo ano
-    return now < resetDate ? "UTILIZADO" : "LIBERADO";
+    if (issueDate.getFullYear() < now.getFullYear()) return Status.LIBERADO;
+    const resetDate = new Date(issueDate.getFullYear() + 1, 0, 1);
+    return now < resetDate ? Status.UTILIZADO : Status.LIBERADO;
   }
 
   if (program === "AZUL") {
     if (changeDate) {
-      // AZUL: PENDENTE por 60 dias após a data de alteração (se houver).
-      // 60 dias em milissegundos: 60 * 24 horas * 60 minutos * 60 segundos * 1000 ms
       const finish = new Date(changeDate.getTime() + 60 * 24 * 60 * 60 * 1000);
-      return now < finish ? "PENDENTE" : "LIBERADO";
+      return now < finish ? Status.PENDENTE : Status.LIBERADO;
     }
-    return "UTILIZADO";
+    return Status.UTILIZADO;
   }
 
-  return "UTILIZADO";
+  return Status.UTILIZADO;
 }
 
 /**

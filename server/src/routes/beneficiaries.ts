@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { computeStatus } from "../utils/statusCalculator";
 import parseDateOnlyToLocal, { DATE_RE } from "../utils/dateUtils";
+import { nowInBrazil, startOfDayBR } from "../utils/timezone";
 import { isCpfValid } from "../utils/validators";
 import { authMiddleware, AuthRequest } from "../middleware/authMiddleware";
 import { Program, Status } from "@prisma/client";
@@ -35,7 +36,7 @@ router.get("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Aut
     const list = await prisma.beneficiary.findMany({ where, orderBy: { createdAt: "desc" } });
 
     // Recalcula o status com base na data atual
-    const now = new Date();
+  const now = nowInBrazil();
     const mapped = list.map((b) => {
       const isNewForAzul = !!b.previousName;
       const status = computeStatus(b.program as Program, b.issueDate, b.changeDate ?? null, now, isNewForAzul as any);
@@ -72,8 +73,7 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
 
   // Impede datas futuras
   const providedDate = parseDateOnlyToLocal(issueDate as any);
-  const today = new Date();
-  today.setHours(0,0,0,0);
+  const today = startOfDayBR(nowInBrazil());
   const providedDateOnly = new Date(providedDate);
   providedDateOnly.setHours(0,0,0,0);
   if (providedDateOnly > today) return res.status(400).json({ error: "Data de cadastro não pode ser futura" });
@@ -106,7 +106,7 @@ router.post("/profiles/:profileId/beneficiaries", authMiddleware, async (req: Au
   if (exists) return res.status(409).json({ error: "CPF já cadastrado" });
 
   const issue = parseDateOnlyToLocal(issueDate as any);
-  const status = computeStatus(prog, issue, null, new Date());
+  const status = computeStatus(prog, issue, null, nowInBrazil());
 
     const created = await prisma.beneficiary.create({
       data: {
@@ -164,7 +164,7 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
       // Sem troca de CPF: atualização simples
       if (!cpf || cpf === existing.cpf) {
         const newIssueDate = issueDate ? parseDateOnlyToLocal(issueDate as any) : existing.issueDate;
-        const newStatus = computeStatus(existing.program, newIssueDate, existing.changeDate ?? null, new Date());
+  const newStatus = computeStatus(existing.program, newIssueDate, existing.changeDate ?? null, nowInBrazil());
         const updated = await prisma.beneficiary.update({
           where: { id },
           data: {
@@ -177,12 +177,11 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
       }
 
       // Troca AZUL: cria novo registro e marca ambos como PENDENTE
-      const now = new Date();
+  const now = nowInBrazil();
   const newIssueDate = issueDate ? parseDateOnlyToLocal(issueDate as any) : now;
 
         // Impede data futura
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+  const today = startOfDayBR(nowInBrazil());
         const newDateOnly = new Date(newIssueDate);
         newDateOnly.setHours(0, 0, 0, 0);
   if (newDateOnly > today) return res.status(400).json({ error: "A data de cadastro não pode ser futura" });
@@ -239,7 +238,7 @@ router.put("/beneficiaries/:id", authMiddleware, async (req: AuthRequest, res) =
   }
 
   const newIssue = issueDate ? parseDateOnlyToLocal(issueDate as any) : existing.issueDate;
-  const newStatus = computeStatus(existing.program, newIssue, existing.changeDate ?? null, new Date());
+  const newStatus = computeStatus(existing.program, newIssue, existing.changeDate ?? null, nowInBrazil());
 
     const updated = await prisma.beneficiary.update({
       where: { id },

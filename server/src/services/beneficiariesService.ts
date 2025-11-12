@@ -2,6 +2,7 @@
 // Regras de domínio e utilitários de beneficiários (sem alterar comportamento)
 import { prisma } from "../prisma";
 import { Status } from "@prisma/client";
+import { nowInBrazil, startOfDayBR } from "../utils/timezone";
 
 /**
  * Garante que o perfil exista e pertença ao usuário autenticado.
@@ -23,8 +24,7 @@ export async function reconcileAzulPending(profileIdToCheck?: string) {
   const pendingLimitDays = 30;
   const fallbackRemovalDays = 60;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = startOfDayBR(nowInBrazil());
 
   const baseFilter = {
     program: "AZUL" as const,
@@ -42,8 +42,7 @@ export async function reconcileAzulPending(profileIdToCheck?: string) {
 
   for (const pending of pendingNew) {
     try {
-      const baseDate = new Date(pending.issueDate);
-      baseDate.setHours(0, 0, 0, 0);
+  const baseDate = startOfDayBR(new Date(pending.issueDate));
       const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
       if (diffDays < pendingLimitDays) continue;
 
@@ -88,8 +87,7 @@ export async function reconcileAzulPending(profileIdToCheck?: string) {
   for (const old of orphanOld) {
     try {
       if (!old.changeDate) continue;
-      const baseDate = new Date(old.changeDate);
-      baseDate.setHours(0, 0, 0, 0);
+  const baseDate = startOfDayBR(new Date(old.changeDate));
       const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
       if (diffDays >= fallbackRemovalDays) {
         await prisma.beneficiary.delete({ where: { id: old.id } });

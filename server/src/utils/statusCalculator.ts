@@ -1,4 +1,5 @@
 import { Program, Status } from "@prisma/client";
+import { nowInBrazil } from "./timezone";
 
 /**
  * Calcula o status de um beneficiário com base nas regras do programa, datas de registro e uma data de referência.
@@ -14,7 +15,7 @@ export function computeStatus(
   program: Program,
   issueDate: Date,
   changeDate: Date | null = null,
-  refDate: Date = new Date(),
+  refDate: Date = nowInBrazil(),
   isNewForAzul: boolean = false
 ): Status {
   if (program === "LATAM") {
