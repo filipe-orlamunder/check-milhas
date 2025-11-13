@@ -15,12 +15,12 @@ describe('utils/statusCalculator', () => {
     expect(computeStatus('smiles', issue, null, new Date(2025, 0, 1))).toBe('Liberado');
   });
 
-  it('AZUL: pendente por 60 dias a partir de changeDate', () => {
+  it('AZUL: pendente por 30 dias a partir de changeDate', () => {
     const change = '2024-12-15';
-    expect(computeStatus('azul', '2024-01-01', change, new Date('2025-02-10'))).toBe('Pendente');
-    // 60 dias após 2024-12-15 -> 2025-02-13 (aprox). Em 2025-02-14 não está mais pendente.
-    expect(computeStatus('azul', '2024-01-01', change, new Date('2025-02-14'), true)).toBe('Utilizado');
-    expect(computeStatus('azul', '2024-01-01', change, new Date('2025-02-14'), false)).toBe('Liberado');
+    expect(computeStatus('azul', '2024-01-01', change, new Date('2025-01-10'))).toBe('Pendente');
+    // 30 dias após 2024-12-15 -> 2025-01-14 (aprox). Em 2025-01-15 não está mais pendente.
+    expect(computeStatus('azul', '2024-01-01', change, new Date('2025-01-15'), true)).toBe('Utilizado');
+    expect(computeStatus('azul', '2024-01-01', change, new Date('2025-01-15'), false)).toBe('Liberado');
   });
 
   it('AZUL: daysRemainingForAzul retorna 0 se não houver changeDate', () => {

@@ -17,12 +17,12 @@ export async function ensureProfileBelongsToUser(profileId: string, userId: stri
 /**
  * Reconcilia alterações pendentes do programa AZUL.
  * - Finaliza alterações após 30 dias, removendo o antigo e consolidando o novo.
- * - Elimina registros órfãos antigos após 60 dias da changeDate.
+ * - Elimina registros órfãos antigos após 30 dias da changeDate.
  */
 export async function reconcileAzulPending(profileIdToCheck?: string) {
   const dayMs = 24 * 60 * 60 * 1000;
   const pendingLimitDays = 30;
-  const fallbackRemovalDays = 60;
+  const fallbackRemovalDays = 30;
 
   const today = startOfDayBR(nowInBrazil());
 
@@ -42,7 +42,7 @@ export async function reconcileAzulPending(profileIdToCheck?: string) {
 
   for (const pending of pendingNew) {
     try {
-  const baseDate = startOfDayBR(new Date(pending.issueDate));
+      const baseDate = startOfDayBR(new Date(pending.changeDate ?? pending.issueDate));
       const diffDays = Math.floor((today.getTime() - baseDate.getTime()) / dayMs);
       if (diffDays < pendingLimitDays) continue;
 
@@ -75,7 +75,7 @@ export async function reconcileAzulPending(profileIdToCheck?: string) {
     }
   }
 
-  // Antigos órfãos (sem previous*), expirados após 60 dias
+  // Antigos órfãos (sem previous*), expirados após 30 dias
   const orphanOld = await prisma.beneficiary.findMany({
     where: {
       ...baseFilter,

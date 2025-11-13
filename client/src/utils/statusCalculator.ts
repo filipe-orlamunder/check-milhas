@@ -50,11 +50,11 @@ export function computeStatus(
     return ref < resetDate ? "Utilizado" : "Liberado";
   }
 
-  // Regra AZUL: 60 dias de quarentena após alteração (changeDate)
+// Regra AZUL: 30 dias de quarentena após alteração (changeDate)
   if (program === "azul") {
     if (changeDate) {
       const finish = new Date(changeDate);
-      finish.setDate(finish.getDate() + 60); // Quarentena de 60 dias
+			finish.setDate(finish.getDate() + 30); // Quarentena de 30 dias
       // Verifica se a quarentena está em andamento
       if (ref < finish) return "Pendente"; 
       // Após a quarentena, 'Utilizado' (se novo) ou 'Liberado' (se substituição)
@@ -68,12 +68,12 @@ export function computeStatus(
   return "Utilizado";
 }
 
-// Calcula os dias restantes para o término da quarentena da Azul (60 dias)
+// Calcula os dias restantes para o término da quarentena da Azul (30 dias)
 export function daysRemainingForAzul(changeDateStr: string | null): number {
   if (!changeDateStr) return 0;
   const changeDate = stripTime(new Date(changeDateStr));
   const finish = new Date(changeDate);
-  finish.setDate(finish.getDate() + 60);
+	finish.setDate(finish.getDate() + 30);
   const today = stripTime(new Date());
   // Calcula a diferença em milissegundos e converte para dias, arredondando para cima
   const diffMs = finish.getTime() - today.getTime();

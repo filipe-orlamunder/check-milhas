@@ -25,7 +25,7 @@ export function computeStatus(program: Program, issueDate: Date, changeDate?: Da
 
   if (program === "AZUL") {
     if (changeDate) {
-      const finish = new Date(changeDate.getTime() + 60 * 24 * 60 * 60 * 1000);
+      const finish = new Date(changeDate.getTime() + 30 * 24 * 60 * 60 * 1000);
       return now < finish ? Status.PENDENTE : Status.LIBERADO;
     }
     return Status.UTILIZADO;

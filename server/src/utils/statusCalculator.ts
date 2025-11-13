@@ -33,10 +33,10 @@ export function computeStatus(
   }
 
   if (program === "AZUL") {
-    // AZUL: Lógica de status PENDENTE baseada em changeDate (60 dias).
+    // AZUL: Lógica de status PENDENTE baseada em changeDate (30 dias).
     if (changeDate) {
-      // 60 dias em milissegundos
-      const finish = new Date(changeDate.getTime() + 60 * 24 * 60 * 60 * 1000); 
+      // 30 dias em milissegundos
+      const finish = new Date(changeDate.getTime() + 30 * 24 * 60 * 60 * 1000); 
       if (refDate < finish) return Status.PENDENTE;
       
       // Após o período PENDENTE, o status depende se é o novo (UTILIZADO) ou o antigo (LIBERADO) beneficiário.
