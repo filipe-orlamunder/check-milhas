@@ -124,6 +124,62 @@ function App() {
     }
   };
 
+  const replaceBeneficiariesForProfile = (profileId: string, apiItems: any[]) => {
+    setBeneficiaries((prev) => {
+      const rest = prev.filter((b) => b.profileId !== profileId);
+      const mapped = apiItems.map((it) => ({
+        id: it.id,
+        profileId: it.profileId,
+        program: fromApiProgram(it.program),
+        name: it.name,
+        cpf: it.cpf,
+        issueDate: typeof it.issueDate === "string" ? it.issueDate : new Date(it.issueDate).toISOString().slice(0, 10),
+        status: fromApiStatus(it.status),
+        previousBeneficiary: it.previousName && it.previousCpf && it.previousDate
+          ? { name: it.previousName, cpf: it.previousCpf, issueDate: (typeof it.previousDate === "string" ? it.previousDate : new Date(it.previousDate).toISOString().slice(0,10)) }
+          : undefined,
+        previousCpf: it.previousCpf ?? undefined,
+        previousName: it.previousName ?? undefined,
+        previousDate: it.previousDate ? (typeof it.previousDate === "string" ? it.previousDate : new Date(it.previousDate).toISOString().slice(0,10)) : undefined,
+        changeDate: it.changeDate ? (typeof it.changeDate === "string" ? it.changeDate : new Date(it.changeDate).toISOString()) : undefined,
+      })) as Beneficiary[];
+      return [...rest, ...mapped];
+    });
+  };
+
+  // Recarrega todos os beneficiários de um perfil (sem filtro de programa)
+  const refreshBeneficiariesForProfile = async (profileId: string) => {
+    try {
+      const data = await apiGet<any[]>(`/profiles/${profileId}/beneficiaries`, token);
+      replaceBeneficiariesForProfile(profileId, data);
+    } catch (err: any) {
+      console.error("Falha ao carregar beneficiários do perfil:", err);
+    }
+  };
+
+  // Recarrega beneficiários de todos os perfis fornecidos
+  const refreshAllBeneficiaries = async (list?: Profile[]) => {
+    const base = list ?? profiles;
+    if (!token || !currentUser || !base?.length) return;
+    await Promise.all(base.map((p) => refreshBeneficiariesForProfile(p.id)));
+  };
+
+  /**
+   * Carrega os perfis do usuário autenticado a partir da API
+   * sobrescrevendo o estado local.
+   */
+  const refreshProfiles = async (): Promise<Profile[] | undefined> => {
+    if (!token || !currentUser) return;
+    try {
+      const data = await apiGet<Profile[]>("/profiles", token);
+      const mine = data.filter((p) => p.userId === currentUser.id);
+      setProfiles(mine);
+      return mine;
+    } catch (err: any) {
+      console.error("Falha ao carregar perfis:", err);
+    }
+  };
+
   /**
    * Gerencia o login: define usuário, token e navega para o dashboard.
    */
@@ -138,6 +194,10 @@ function App() {
     });
     setCurrentUser(user);
     setCurrentScreen("dashboard");
+    Promise.resolve().then(async () => {
+      const list = await refreshProfiles();
+      if (list?.length) await refreshAllBeneficiaries(list);
+    });
   };
 
   /**
@@ -159,6 +219,10 @@ function App() {
     setUsers((prev) => [...prev, user]);
     setCurrentUser(user);
     setCurrentScreen("dashboard");
+    Promise.resolve().then(async () => {
+      const list = await refreshProfiles();
+      if (list?.length) await refreshAllBeneficiaries(list);
+    });
   };
 
   /**
@@ -166,6 +230,7 @@ function App() {
    */
   const handleAddProfile = (profile: Profile) => {
     setProfiles((prev) => [...prev, profile]);
+    refreshProfiles();
   };
 
   /**
@@ -382,6 +447,14 @@ function App() {
         .map((ben) => (updates.has(ben.id) ? updates.get(ben.id)! : ben));
     });
   }, [beneficiaries, setBeneficiaries]);
+
+  // Recarrega perfis sempre que token ou usuário mudarem
+  useEffect(() => {
+    (async () => {
+      const list = await refreshProfiles();
+      if (list?.length) await refreshAllBeneficiaries(list);
+    })();
+  }, [token, currentUser]);
 
   // Ao entrar numa tela de programa com um perfil selecionado, carrega do backend
   useEffect(() => {
