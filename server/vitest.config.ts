@@ -4,9 +4,18 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    // --- Configurações de Cobertura de Testes ---
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
+      exclude: [
+        'src/generated/**',
+        'src/data/store.ts',      
+        'src/utils/asyncHandler.ts', 
+        '**/__tests__/**',        
+        'node_modules/**',     
+        'dist/**',                
+      ],
     },
     include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts', 'src/**/__tests__/**/*.spec.ts'],
   },
