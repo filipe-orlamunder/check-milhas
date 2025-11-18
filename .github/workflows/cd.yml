@@ -1,0 +1,50 @@
+name: CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-artifacts:
+    name: Build client and server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci || npm install
+
+      - name: Build client
+        working-directory: client
+        run: npx vite build
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci || npm install
+
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Upload client dist as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+
+      - name: Upload server build as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-build
+          path: |
+            server/dist
+            server/build
+          if-no-files-found: ignore
