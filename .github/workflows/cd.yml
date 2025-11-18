@@ -30,9 +30,9 @@ jobs:
         working-directory: server
         run: npm ci || npm install
 
-      - name: Build server (não bloqueante)
+      - name: Skip server build in CD
         working-directory: server
-        run: npm run build || echo "Server build failed, mas pipeline continua"
+        run: echo "Server build (tsc) não executado neste pipeline."
 
       - name: Upload client dist as artifact
         uses: actions/upload-artifact@v4

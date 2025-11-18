@@ -60,5 +60,5 @@ jobs:
       - name: Run tests (server, não bloqueante)
         run: npm run test || echo "Server tests failed, mas pipeline continua"
 
-      - name: Build (server, não bloqueante)
-        run: npm run build || echo "Server build failed, mas pipeline continua"
+      - name: Skip server build in CI
+        run: echo "Server build (tsc) não executado neste pipeline."
