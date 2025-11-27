@@ -1,9 +1,16 @@
-# Test coverage outputs
+node_modules/
+
+client/dist/
+client/.dist/
+server/dist/
+server/.dist/
+
 client/coverage/
 server/coverage/
 
-# Environment variables (never commit secrets)
 .env
 .env.*
 **/.env
 **/.env.*
+
+server/src/generated/prisma/
