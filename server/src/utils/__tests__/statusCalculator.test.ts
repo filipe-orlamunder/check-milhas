@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { Program, Status } from '@prisma/client';
+import type { Program as ProgramEnum, Status as StatusEnum } from '@prisma/client';
+import * as Prisma from '@prisma/client';
 import { computeStatus } from '../statusCalculator';
+
+const fallbackProgram = {
+  LATAM: 'LATAM',
+  SMILES: 'SMILES',
+  AZUL: 'AZUL',
+} as const satisfies Record<string, ProgramEnum>;
+
+const fallbackStatus = {
+  UTILIZADO: 'UTILIZADO',
+  LIBERADO: 'LIBERADO',
+  PENDENTE: 'PENDENTE',
+} as const satisfies Record<string, StatusEnum>;
+
+const Program = Prisma.Program ?? fallbackProgram;
+const Status = Prisma.Status ?? fallbackStatus;
 
 describe('server/utils/statusCalculator.computeStatus', () => {
   it('LATAM: libera após 12 meses da issueDate', () => {
