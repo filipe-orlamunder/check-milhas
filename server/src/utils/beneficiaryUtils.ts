@@ -1,5 +1,21 @@
-import { Program, Status } from "@prisma/client";
+import type { Program as ProgramEnum, Status as StatusEnum } from "@prisma/client";
+import * as Prisma from "@prisma/client";
 import { nowInBrazil } from "./timezone";
+
+const fallbackProgram = {
+  LATAM: "LATAM",
+  SMILES: "SMILES",
+  AZUL: "AZUL",
+} as const satisfies Record<string, ProgramEnum>;
+
+const fallbackStatus = {
+  UTILIZADO: "UTILIZADO",
+  LIBERADO: "LIBERADO",
+  PENDENTE: "PENDENTE",
+} as const satisfies Record<string, StatusEnum>;
+
+const Program = (Prisma as Partial<typeof Prisma>).Program ?? fallbackProgram;
+const Status = (Prisma as Partial<typeof Prisma>).Status ?? fallbackStatus;
 
 /**
  * Calcula o status de um beneficiário com base no programa e nas datas de emissão/alteração.
@@ -8,7 +24,11 @@ import { nowInBrazil } from "./timezone";
  * @param changeDate A data de alteração mais recente (opcional, relevante para AZUL).
  * @returns O status calculado (UTILIZADO, LIBERADO, PENDENTE).
  */
-export function computeStatus(program: Program, issueDate: Date, changeDate?: Date | null): Status {
+export function computeStatus(
+  program: ProgramEnum,
+  issueDate: Date,
+  changeDate?: Date | null
+): StatusEnum {
   const now = nowInBrazil();
 
   if (program === "LATAM") {
