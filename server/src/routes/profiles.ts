@@ -54,9 +54,9 @@ profilesRouter.post("/profiles", authMiddleware, async (req: AuthRequest, res) =
   // Valida corpo
     const { name, cpf } = createProfileSchema.parse(req.body);
 
-    // Verifica duplicidade por CPF (único globalmente)
+    // Verifica duplicidade por CPF apenas entre os perfis do usuário autenticado
     const existingProfile = await prisma.profile.findFirst({
-      where: { cpf },
+      where: { cpf, userId },
     });
 
     if (existingProfile) {
