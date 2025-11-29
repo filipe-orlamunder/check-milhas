@@ -14,7 +14,11 @@ export default defineConfig({
         'src/utils/asyncHandler.ts', 
         '**/__tests__/**',        
         'node_modules/**',     
-        'dist/**',                
+        'dist/**',
+        // Excluir arquivos de configuração do Vitest do relatório de cobertura
+        'vitest.config.ts',
+        'vitest.config.js',
+        '**/vitest.config.*',
       ],
     },
     include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts', 'src/**/__tests__/**/*.spec.ts'],
