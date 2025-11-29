@@ -1,4 +1,5 @@
-# ✈️ Check Milhas — Gestão Inteligente de Emissões com Programas de Fidelidade
+# Check Milhas
+## Gestão Inteligente de Emissões de Passagens Aéreas com Milhas
 
 ## 🧩 Visão Geral
 O **Check Milhas** é uma aplicação web criada para organizar, automatizar e facilitar o gerenciamento de beneficiários nos principais programas de fidelidade brasileiros — **Latam Pass**, **Smiles** e **Azul Fidelidade**.  
