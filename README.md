@@ -119,6 +119,8 @@ Instalar dependências e rodar:
 ```bash
 cd server
 npm install
+npm install @prisma/client prisma
+npx prisma generate
 npm run dev
 ```
 
