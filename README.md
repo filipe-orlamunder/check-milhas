@@ -9,7 +9,7 @@ A plataforma calcula automaticamente carências, bloqueios e liberações, aplic
 
 ## 🌐 Ambiente de Produção
 Acesse a versão online do Check Milhas:  
-👉 **https://37749218-010b-4389-9e1a-3033d084553c-00-tp6h9c1ly05l.picard.replit.dev/**
+👉 **https://check-milhas.replit.app/**
 
 ## 🔗 Repositório
 Código-fonte e histórico estão no GitHub:  
